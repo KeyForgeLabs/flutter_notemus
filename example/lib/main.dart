@@ -23,6 +23,7 @@ import 'examples/flags_vs_beams_example.dart';
 import 'examples/professional_ornaments_example.dart';
 import 'examples/corrected_ornaments_example.dart';
 import 'examples/test_pitch_accuracy.dart';
+import 'examples/test_augmentation_dots.dart';
 
 // Novos exemplos completos
 import 'examples/complete_clefs_demo.dart';
@@ -72,6 +73,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<String> _titles = [
     '🔍 TESTE: Precisão de Alturas',
+    '🎯 TESTE: Pontos de Aumento',
     'Claves',
     'Armaduras de Clave',
     'Figuras Rítmicas',
@@ -98,6 +100,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = const [
     TestPitchAccuracy(),
+    TestAugmentationDots(),
     ClefsExample(),
     KeySignaturesExample(),
     RhythmicFiguresExample(),

@@ -195,6 +195,52 @@ class SMuFLPositioningEngine {
     return length;
   }
 
+  /// Calcula o comprimento da haste para ACORDES
+  /// CRÍTICO: A haste deve atravessar TODAS as notas do acorde!
+  /// 
+  /// Behind Bars (p. 16): "A haste de um acorde deve conectar a nota mais extrema
+  /// à linha de beam ou ao comprimento padrão, o que for maior."
+  /// 
+  /// [noteStaffPositions] - Posições de todas as notas do acorde
+  /// [stemUp] - Se a haste vai para cima
+  /// [beamCount] - Número de barras (0 para notas sem barra)
+  double calculateChordStemLength({
+    required List<int> noteStaffPositions,
+    required bool stemUp,
+    required int beamCount,
+  }) {
+    if (noteStaffPositions.isEmpty) return standardStemLength;
+    if (noteStaffPositions.length == 1) {
+      return calculateStemLength(
+        staffPosition: noteStaffPositions.first,
+        stemUp: stemUp,
+        beamCount: beamCount,
+      );
+    }
+
+    // Encontrar a extensão (span) do acorde
+    final int highestPos = noteStaffPositions.reduce((a, b) => a > b ? a : b);
+    final int lowestPos = noteStaffPositions.reduce((a, b) => a < b ? a : b);
+    final int chordSpan = (highestPos - lowestPos).abs();
+
+    // Converter span de staff positions (meios de espaço) para staff spaces
+    final double chordSpanSpaces = chordSpan * 0.5;
+
+    // FÓRMULA: stemLength = chordSpan + standardStemLength
+    // A haste deve ATRAVESSAR todas as notas (span) + comprimento padrão
+    double length = chordSpanSpaces + standardStemLength;
+
+    // Adicionar comprimento extra para múltiplos feixes
+    if (beamCount > 0) {
+      length += (beamCount - 1) * stemExtensionPerBeam;
+    }
+
+    // Garantir comprimento mínimo
+    length = length.clamp(minimumStemLength, 6.0);
+
+    return length;
+  }
+
   /// Calcula a posição correta de um acidente relativo à cabeça de nota
   /// Baseado em práticas de tipografia musical profissional
   /// Behind Bars: 0.16-0.20 staff spaces da cabeça

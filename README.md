@@ -273,9 +273,164 @@ flutter run
 
 ---
 
+## ⚙️ Technical Notes: Flutter TextPainter & SMuFL
+
+### 🔍 Understanding Baseline Corrections
+
+**Important for contributors and advanced users!**
+
+Flutter Notemus implements several baseline corrections to compensate for fundamental differences between Flutter's text rendering system and the SMuFL specification. Understanding these differences is crucial for maintaining and extending the library.
+
+---
+
+### 📐 The Core Issue
+
+#### SMuFL Coordinate System
+```
+SMuFL uses precise glyph-based coordinates:
+- Baseline: Center line of the glyph
+- Bounding boxes: Exact per-glyph dimensions
+- Example (noteheadBlack):
+  bBoxSwY: -0.5 staff spaces
+  bBoxNeY: +0.5 staff spaces
+  Height: 1.0 staff space
+```
+
+#### Flutter TextPainter System
+```
+Flutter uses font-wide metrics (OpenType hhea table):
+- ascent: ~2.5 staff spaces
+- descent: ~2.5 staff spaces
+- Total height: ~5.0 staff spaces (5× the actual glyph!)
+```
+
+**Why?** The font metrics must accommodate the **largest possible glyph** (clefs, ornaments, etc.), not individual noteheads.
+
+---
+
+### 🎯 Baseline Correction Formula
+
+```dart
+baselineCorrection = -textPainter.height * 0.5
+                   = -(5.0 staff spaces) * 0.5
+                   = -2.5 staff spaces
+```
+
+This correction:
+1. ✅ Moves glyphs from Flutter's "top of box" coordinate to SMuFL's "baseline" coordinate
+2. ✅ Ensures noteheads align precisely with staff lines
+3. ✅ Maintains compatibility with SMuFL anchors (stemUpSE, stemDownNW)
+
+---
+
+### 📊 Impact on Components
+
+#### Noteheads
+```dart
+// base_glyph_renderer.dart
+static const GlyphDrawOptions noteheadDefault = GlyphDrawOptions(
+  centerVertically: false,
+  disableBaselineCorrection: false, // ← Correction ENABLED
+);
+```
+**Result:** Noteheads render at correct staff positions ✅
+
+#### Augmentation Dots
+```dart
+// dot_renderer.dart
+double _calculateDotY(double noteY, int staffPosition) {
+  // noteY already has -2.5 SS baseline correction applied
+  // Compensate to position dots correctly:
+  
+  if (staffPosition.isEven) {
+    return noteY - (coordinates.staffSpace * 2.5); // Compensate
+  } else {
+    return noteY - (coordinates.staffSpace * 2.0); // Compensate
+  }
+}
+```
+**Result:** Dots align perfectly in staff spaces ✅
+
+---
+
+### 🔬 Mathematical Proof
+
+For a note on **staff line 2** (G4 in treble clef):
+
+```
+Without correction:
+  staffPosition = -2
+  noteY = 72.0px (baseline)
+  TextPainter renders at: 72.0px ← TOO LOW!
+
+With correction:
+  staffPosition = -2
+  noteY = 72.0px
+  baselineCorrection = -30.0px (-2.5 SS)
+  Final Y = 72.0 - 30.0 = 42.0px ← CORRECT!
+
+Dot position:
+  dotY = noteY - (2.5 × staffSpace)
+       = 72.0 - 30.0
+       = 42.0px
+  Then add 0.5 SS to move to space above line
+  Final dotY = 42.0 - 6.0 = 36.0px ← PERFECT!
+```
+
+---
+
+### 🏗️ Design Decisions
+
+#### Why Not Modify the Font?
+- ❌ Would break compatibility with standard Bravura distribution
+- ❌ Would lose updates and improvements from SMuFL team
+- ❌ Wouldn't solve the fundamental Flutter/SMuFL difference
+
+#### Why Not Use Canvas.drawParagraph Directly?
+- ❌ More complex API
+- ❌ Loses Flutter's text rendering optimizations
+- ❌ More difficult to maintain
+
+#### Why TextPainter + Corrections? ✅
+- ✅ Uses Flutter's native, optimized text rendering
+- ✅ Works with any SMuFL-compliant font
+- ✅ Mathematical corrections are predictable and documentable
+- ✅ Well-tested and proven approach
+
+---
+
+### 📚 References
+
+- **SMuFL Specification**: [https://w3c.github.io/smufl/latest/](https://w3c.github.io/smufl/latest/)
+- **OpenType hhea Table**: [https://docs.microsoft.com/en-us/typography/opentype/spec/hhea](https://docs.microsoft.com/en-us/typography/opentype/spec/hhea)
+- **"Behind Bars"** by Elaine Gould - Music engraving best practices
+- **Flutter TextPainter**: [https://api.flutter.dev/flutter/painting/TextPainter-class.html](https://api.flutter.dev/flutter/painting/TextPainter-class.html)
+
+---
+
+### 💡 For Contributors
+
+When adding new renderers or modifying existing ones:
+
+1. **Understand the coordinate system** - Are you working with SMuFL baseline or Flutter top-of-box?
+2. **Check if baseline correction is enabled** - Most glyphs need it for proper positioning
+3. **Test with multiple staff positions** - Verify alignment on lines AND spaces
+4. **Document empirical values** - If you need corrections, explain why mathematically
+5. **Refer to `SOLUCAO_FINAL_PONTOS.md`** - Detailed case study of the dot positioning solution
+
+**Key principle:** All "magic numbers" in this library are actually **mathematical compensations** for the Flutter/SMuFL coordinate difference. They're documented and proven!
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](docs/contributing.md) for details.
+
+When contributing, please:
+- Read the **Technical Notes** section above
+- Maintain mathematical precision in positioning
+- Document any empirical values with explanations
+- Test visual output against professional notation software
 
 ---
 

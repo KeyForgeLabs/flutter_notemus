@@ -79,22 +79,40 @@ class TupletRenderer {
 
     final firstNote = notePositions.first;
     final lastNote = notePositions.last;
-    final bracketY = firstNote.dy - (coordinates.staffSpace * 2.5);
+    
+    // CORREÇÃO: Altura do bracket baseada em EngravingRules (tupletBracketHeight = 1.0)
+    // Posicionar acima das hastes com clearance adequado
+    final bracketY = firstNote.dy - (coordinates.staffSpace * 4.0); // Aumentado de 2.5
 
+    // CORREÇÃO SMuFL: Espessura consistente com tupletLineWidth (0.12 staff spaces)
     final paint = Paint()
       ..color = theme.stemColor
-      ..strokeWidth = coordinates.staffSpace * 0.08
-      ..style = PaintingStyle.stroke;
+      ..strokeWidth = coordinates.staffSpace * 0.12 // Aumentado de 0.08
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.square; // Pontas quadradas
 
-    // Linha horizontal do colchete
+    // Calcular largura do grupo
+    final groupWidth = (lastNote.dx - firstNote.dx).abs();
+    
+    // CORREÇÃO: Bracket proporcional - não precisa cobrir toda a extensão
+    // Deixar espaço para o número no centro (30% no meio livre)
+    
+    // Linha horizontal esquerda
     canvas.drawLine(
       Offset(firstNote.dx, bracketY),
+      Offset(firstNote.dx + (groupWidth * 0.35), bracketY), // 35% da largura
+      paint,
+    );
+    
+    // Linha horizontal direita
+    canvas.drawLine(
+      Offset(lastNote.dx - (groupWidth * 0.35), bracketY), // 35% da largura
       Offset(lastNote.dx, bracketY),
       paint,
     );
 
     // Hastes verticais nas extremidades
-    final verticalLength = coordinates.staffSpace * 0.3;
+    final verticalLength = coordinates.staffSpace * 0.4; // Aumentado de 0.3
     canvas.drawLine(
       Offset(firstNote.dx, bracketY),
       Offset(firstNote.dx, bracketY + verticalLength),
@@ -115,7 +133,8 @@ class TupletRenderer {
     if (notePositions.isEmpty) return;
 
     final centerX = (notePositions.first.dx + notePositions.last.dx) / 2;
-    final numberY = notePositions.first.dy - (coordinates.staffSpace * 2.2);
+    // CORREÇÃO: Alinhar com o bracket (tupletNumberDistance = 0.5)
+    final numberY = notePositions.first.dy - (coordinates.staffSpace * 3.8);
 
     final glyphName = 'tuplet$number';
 
@@ -123,7 +142,7 @@ class TupletRenderer {
       canvas,
       glyphName: glyphName,
       position: Offset(centerX, numberY),
-      size: glyphSize * 0.6,
+      size: glyphSize * 0.7, // CORREÇÃO: Aumentado de 0.6 para melhor legibilidade
       color: theme.stemColor,
       centerVertically: true,
       centerHorizontally: true,

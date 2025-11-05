@@ -403,14 +403,15 @@ class GlyphDrawOptions {
   }
 
   /// Opções padrão para cabeças de nota
-  /// CRÍTICO: NÃO centralizar! A baseline do TextPainter não coincide com Y=0 SMuFL.
-  /// Os anchors (stemUpSE, stemDownNW) são relativos à baseline SMuFL, não ao centro do TextPainter.
+  /// CRÍTICO: A baseline correction é NECESSÁRIA para posicionar as notas corretamente!
+  /// Os anchors (stemUpSE, stemDownNW) são relativos à baseline SMuFL.
+  /// NOTA: Isso causa um offset nos pontos de aumento, que é compensado no DotRenderer.
   static const GlyphDrawOptions noteheadDefault = GlyphDrawOptions(
     centerHorizontally: false,
     centerVertically: false,
+    // disableBaselineCorrection: false (padrão) - NECESSÁRIO!
     trackBounds: true,
     collisionPriority: CollisionPriority.veryHigh,
-    // NÃO desabilitar baseline! Isso quebra TUDO!
   );
 
   /// Opções padrão para acidentes

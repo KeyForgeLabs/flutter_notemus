@@ -25,22 +25,22 @@ class TestAugmentationDots extends StatelessWidget {
               description: 'Pontos devem estar no ESPAÇO acima da linha',
               elements: [
                 Clef(clefType: ClefType.treble),
-                // G4 está na linha 2
+                // G4 está na linha 2 (staffPos = -2)
                 Note(
                   pitch: const Pitch(step: 'G', octave: 4),
                   duration: const Duration(DurationType.half, dots: 1),
                 ),
-                // B4 está na linha 3 (meio)
+                // B4 está na linha 3 central (staffPos = 0)
                 Note(
                   pitch: const Pitch(step: 'B', octave: 4),
                   duration: const Duration(DurationType.half, dots: 2),
                 ),
-                // D5 está na linha 4
+                // D5 está na linha 4 (staffPos = 2)
                 Note(
                   pitch: const Pitch(step: 'D', octave: 5),
                   duration: const Duration(DurationType.quarter, dots: 1),
                 ),
-                // F5 está na linha 5
+                // F5 está na linha 5 superior (staffPos = 4)
                 Note(
                   pitch: const Pitch(step: 'F', octave: 5),
                   duration: const Duration(DurationType.quarter, dots: 1),
@@ -52,22 +52,22 @@ class TestAugmentationDots extends StatelessWidget {
               description: 'Pontos devem estar no MESMO espaço da nota',
               elements: [
                 Clef(clefType: ClefType.treble),
-                // F4 está no espaço 1
+                // F4 está no espaço 1 (abaixo da linha 2, staffPos = -3)
                 Note(
                   pitch: const Pitch(step: 'F', octave: 4),
                   duration: const Duration(DurationType.half, dots: 1),
                 ),
-                // A4 está no espaço 2
+                // A4 está no espaço 2 (abaixo da linha 3, staffPos = -1)
                 Note(
                   pitch: const Pitch(step: 'A', octave: 4),
                   duration: const Duration(DurationType.half, dots: 2),
                 ),
-                // C5 está no espaço 3
+                // C5 está no espaço 3 (acima da linha 3, staffPos = 1)
                 Note(
                   pitch: const Pitch(step: 'C', octave: 5),
                   duration: const Duration(DurationType.quarter, dots: 1),
                 ),
-                // E5 está no espaço 4
+                // E5 está no espaço 4 (abaixo da linha 5, staffPos = 3)
                 Note(
                   pitch: const Pitch(step: 'E', octave: 5),
                   duration: const Duration(DurationType.quarter, dots: 1),
@@ -79,17 +79,17 @@ class TestAugmentationDots extends StatelessWidget {
               description: 'Pontos devem estar no espaço acima',
               elements: [
                 Clef(clefType: ClefType.bass),
-                // F3 está na linha 4
+                // F3 está na linha 4 (onde fica o símbolo da clave, staffPos = 2)
                 Note(
                   pitch: const Pitch(step: 'F', octave: 3),
                   duration: const Duration(DurationType.half, dots: 1),
                 ),
-                // A3 está na linha 2
+                // A3 está na linha 5 SUPERIOR (staffPos = 4, COM linha suplementar!)
                 Note(
                   pitch: const Pitch(step: 'A', octave: 3),
                   duration: const Duration(DurationType.half, dots: 2),
                 ),
-                // C4 está no espaço 3
+                // C4 está ACIMA do pentagrama com linha suplementar (staffPos = 6)
                 Note(
                   pitch: const Pitch(step: 'C', octave: 4),
                   duration: const Duration(DurationType.quarter, dots: 1),

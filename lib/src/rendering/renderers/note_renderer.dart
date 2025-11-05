@@ -124,16 +124,24 @@ class NoteRenderer extends BaseGlyphRenderer {
     // A correção de baseline SMuFL é aplicada automaticamente em drawGlyphWithBBox
     final notePos = Offset(basePosition.dx, noteY);
 
-    // CORREÇÃO CRÍTICA: Calcular o centro horizontal da cabeça de nota
-    // Como noteheads usam centerHorizontally: false, notePos.dx é a borda ESQUERDA
-    // Mas articulações, ornamentos, etc. usam centerHorizontally: true e esperam o CENTRO
+    // CORREÇÃO CRÍTICA: Calcular o CENTRO REAL da cabeça de nota (horizontal E vertical)
+    // Como noteheads usam centerHorizontally: false e centerVertically: false,
+    // notePos é a posição da borda ESQUERDA e BASELINE do TextPainter
+    // Mas articulações, ornamentos, e PONTOS esperam o CENTRO real da nota
     final noteheadInfo = metadata.getGlyphInfo(noteheadGlyph);
     final bbox = noteheadInfo?.boundingBox;
+    
     final centerX = bbox != null
         ? ((bbox.bBoxSwX + bbox.bBoxNeX) / 2) * coordinates.staffSpace
         : (1.18 / 2) * coordinates.staffSpace; // Fallback para noteheadBlack
     
-    final noteCenter = Offset(basePosition.dx + centerX, noteY);
+    // CORREÇÃO CRÍTICA: noteY é a baseline do TextPainter, não o centro vertical!
+    // Precisamos adicionar o centerY do bounding box SMuFL
+    final centerY = bbox != null
+        ? (bbox.centerY * coordinates.staffSpace)
+        : 0.0; // Se não tiver bbox, assumir que noteY já está correto
+    
+    final noteCenter = Offset(basePosition.dx + centerX, noteY + centerY);
 
     // 🆕 Delegar para AccidentalRenderer
     accidentalRenderer.render(canvas, note, notePos, staffPosition.toDouble());

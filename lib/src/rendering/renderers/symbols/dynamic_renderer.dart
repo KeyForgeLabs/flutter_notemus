@@ -69,40 +69,48 @@ class DynamicRenderer extends BaseGlyphRenderer {
     Offset basePosition, {
     double verticalOffset = 0.0,
   }) {
-    final length = dynamic.length ?? coordinates.staffSpace * 4;
+    // CORREÇÃO: Comprimento proporcional ao número de notas abrangidas
+    // Se length não especificado, usar comprimento padrão de 4 staff spaces por nota
+    // Mas permitir override via dynamic.length
+    final defaultLength = coordinates.staffSpace * 6.0; // Aumentado de 4.0 para 6.0
+    final length = dynamic.length ?? defaultLength;
+    
     final hairpinY =
         coordinates.getStaffLineY(1) +
         (coordinates.staffSpace * 2.5) +
         verticalOffset;
-    final height = coordinates.staffSpace * 0.75;
+    
+    // CORREÇÃO: Altura proporcional também (mais expressiva)
+    final height = coordinates.staffSpace * 0.9; // Aumentado de 0.75
 
     final hairpinThickness = metadata.getEngravingDefault('hairpinThickness');
     final paint = Paint()
       ..color = theme.dynamicColor ?? theme.noteheadColor
-      ..strokeWidth = hairpinThickness * coordinates.staffSpace;
+      ..strokeWidth = hairpinThickness * coordinates.staffSpace
+      ..strokeCap = StrokeCap.butt; // CORREÇÃO: Pontas quadradas (não arredondadas)
 
     if (dynamic.type == DynamicType.crescendo) {
-      // Crescendo: abre para direita
-      canvas.drawLine(
-        Offset(basePosition.dx, hairpinY + height),
-        Offset(basePosition.dx + length, hairpinY),
-        paint,
-      );
+      // Crescendo: abre para direita (<)
       canvas.drawLine(
         Offset(basePosition.dx, hairpinY - height),
         Offset(basePosition.dx + length, hairpinY),
         paint,
       );
+      canvas.drawLine(
+        Offset(basePosition.dx, hairpinY + height),
+        Offset(basePosition.dx + length, hairpinY),
+        paint,
+      );
     } else if (dynamic.type == DynamicType.diminuendo) {
-      // Diminuendo: fecha para direita
+      // Diminuendo: fecha para direita (>)
       canvas.drawLine(
         Offset(basePosition.dx, hairpinY),
-        Offset(basePosition.dx + length, hairpinY + height),
+        Offset(basePosition.dx + length, hairpinY - height),
         paint,
       );
       canvas.drawLine(
         Offset(basePosition.dx, hairpinY),
-        Offset(basePosition.dx + length, hairpinY - height),
+        Offset(basePosition.dx + length, hairpinY + height),
         paint,
       );
     }

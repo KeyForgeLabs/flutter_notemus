@@ -150,32 +150,52 @@ class OrnamentRenderer extends BaseGlyphRenderer {
     final stemHeight = coordinates.staffSpace * 3.5;
 
     if (ornamentAbove) {
-      // CORREÇÃO LACERDA: Ornamentos acima devem ficar bem acima da pauta
-      // Mínimo de 1.0 staff space acima da linha superior (5ª linha)
+      // CORREÇÃO DINÂMICA: Ornamentos devem ter posicionamento inteligente
+      // 
+      // REGRA 1: Notas no pentagrama → ornamento acima do pentagrama (linha 5)
+      // REGRA 2: Notas muito altas (>6) → ornamento acima da nota com clearance mínimo
+      // REGRA 3: Se tem haste para cima, considerar ponta da haste
+      
       final line5Y = coordinates.getStaffLineY(5);
-      final minOrnamentY = line5Y - (coordinates.staffSpace * 1.0);
+      
+      // Para notas muito altas (linhas suplementares superiores)
+      if (staffPosition > 6) {
+        // Ornamento acima da nota, não acima do pentagrama
+        // Clearance mínimo: 0.75 staff spaces (ornamentToNoteDistance)
+        return noteY - (coordinates.staffSpace * 0.75);
+      }
+      
+      // Para notas dentro ou próximas do pentagrama
+      final minOrnamentY = line5Y - (coordinates.staffSpace * 1.2);
 
-      // Se tem haste para cima, ornamento acima da ponta da haste
+      // Se tem haste para cima, verificar se precisa elevar mais
       if (stemUp) {
         final stemTipY = noteY - stemHeight;
-        if (stemTipY < minOrnamentY) {
-          return stemTipY - (coordinates.staffSpace * 0.6);
-        }
+        // Clearance da haste: 0.6 staff spaces
+        final ornamentYFromStem = stemTipY - (coordinates.staffSpace * 0.6);
+        // Usar o mais alto (menor Y)
+        return ornamentYFromStem < minOrnamentY ? ornamentYFromStem : minOrnamentY;
       }
+      
       return minOrnamentY;
     } else {
-      // CORREÇÃO LACERDA: Ornamentos abaixo devem ficar bem abaixo da pauta
-      // Mínimo de 1.0 staff space abaixo da linha inferior (1ª linha)
+      // CORREÇÃO DINÂMICA: Ornamentos abaixo com mesma lógica
       final line1Y = coordinates.getStaffLineY(1);
-      final maxOrnamentY = line1Y + (coordinates.staffSpace * 1.0);
+      
+      // Para notas muito baixas (linhas suplementares inferiores)
+      if (staffPosition < -6) {
+        return noteY + (coordinates.staffSpace * 0.75);
+      }
+      
+      final maxOrnamentY = line1Y + (coordinates.staffSpace * 1.2);
 
-      // Se tem haste para baixo, ornamento abaixo da ponta da haste
+      // Se tem haste para baixo
       if (!stemUp) {
         final stemTipY = noteY + stemHeight;
-        if (stemTipY > maxOrnamentY) {
-          return stemTipY + (coordinates.staffSpace * 0.6);
-        }
+        final ornamentYFromStem = stemTipY + (coordinates.staffSpace * 0.6);
+        return ornamentYFromStem > maxOrnamentY ? ornamentYFromStem : maxOrnamentY;
       }
+      
       return maxOrnamentY;
     }
   }

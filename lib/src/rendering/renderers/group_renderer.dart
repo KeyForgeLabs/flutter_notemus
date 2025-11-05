@@ -125,7 +125,9 @@ class GroupRenderer {
       return beams;
     }).toList();
 
-    // CORREÇÃO VISUAL: Usar valores corretos do metadata SMuFL
+    // CORREÇÃO SMuFL: Usar valores corretos do metadata
+    // beamThickness = 0.5 staff spaces (padrão Bravura)
+    // beamSpacing = 0.25 staff spaces (padrão Bravura)
     final beamThickness =
         metadata.getEngravingDefault('beamThickness') * coordinates.staffSpace;
     final beamSpacing =
@@ -247,6 +249,38 @@ class GroupRenderer {
       }
     }
 
+    // CORREÇÃO CRÍTICA: Renderizar CABEÇAS DE NOTA (estavam ausentes!)
+    // As cabeças de nota devem ser desenhadas para visualização correta do beam group
+    for (int i = 0; i < positions.length; i++) {
+      final noteGlyph = durations[i].glyphName;
+      final notePosition = positions[i];
+      
+      // Usar metadata para obter o codepoint e desenhar o glifo
+      final character = metadata.getCodepoint(noteGlyph);
+      if (character.isNotEmpty) {
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: character,
+            style: TextStyle(
+              fontFamily: 'Bravura',
+              fontSize: glyphSize,
+              color: theme.noteheadColor,
+              height: 1.0,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        
+        // Desenhar cabeça de nota com correção de baseline
+        final baselineCorrection = -textPainter.height * 0.5;
+        textPainter.paint(
+          canvas,
+          Offset(notePosition.dx, notePosition.dy + baselineCorrection),
+        );
+      }
+    }
+
     // Draw stems
     for (int i = 0; i < positions.length; i++) {
       final stemX = stemEndpoints[i].dx;
@@ -325,22 +359,28 @@ class GroupRenderer {
       );
       final noteWidth = coordinates.staffSpace * 1.18;
 
-      // CORREÇÃO: Ligadura começa e termina nas bordas das cabeças
+      // CORREÇÃO SMuFL: Ligadura NÃO deve tocar as cabeças de nota
+      // Distância mínima: 0.25 staff spaces (Behind Bars, p. 180)
+      final clearance = coordinates.staffSpace * 0.25;
+      
       final startPoint = Offset(
-        startElement.position.dx + noteWidth * 0.6,
-        startNoteY + (tieAbove ? -coordinates.staffSpace * 0.2 : coordinates.staffSpace * 0.2),
+        startElement.position.dx + noteWidth * 0.75, // Mais à direita
+        startNoteY + (tieAbove ? -(clearance + coordinates.staffSpace * 0.15) : (clearance + coordinates.staffSpace * 0.15)),
       );
       final endPoint = Offset(
-        endElement.position.dx + noteWidth * 0.4,
-        endNoteY + (tieAbove ? -coordinates.staffSpace * 0.2 : coordinates.staffSpace * 0.2),
+        endElement.position.dx + noteWidth * 0.25, // Mais à esquerda
+        endNoteY + (tieAbove ? -(clearance + coordinates.staffSpace * 0.15) : (clearance + coordinates.staffSpace * 0.15)),
       );
 
-      // CORREÇÃO LACERDA: Ligadura com curva suave, altura proporcional à distância
+      // CORREÇÃO SMuFL: Altura da ligadura baseada em interpolação linear (Behind Bars)
+      // height = k * width + d, limitado por min/max
       final distance = (endPoint.dx - startPoint.dx).abs();
-      final curvatureHeight = (distance * 0.08).clamp(
-        coordinates.staffSpace * 0.3,
-        coordinates.staffSpace * 0.8,
-      );
+      final distanceInSpaces = distance / coordinates.staffSpace;
+      
+      // Fórmula de interpolação (EngravingRules)
+      // k = 0.0288, d = 0.136
+      final heightSpaces = (0.0288 * distanceInSpaces + 0.136).clamp(0.28, 1.2);
+      final curvatureHeight = heightSpaces * coordinates.staffSpace;
 
       final controlPoint = Offset(
         (startPoint.dx + endPoint.dx) / 2,
@@ -348,11 +388,13 @@ class GroupRenderer {
             (curvatureHeight * (tieAbove ? -1 : 1)),
       );
 
-      // CORREÇÃO: Ligadura preenchida (não apenas traço), formato de arco
+      // CORREÇÃO SMuFL: Espessura da ligadura mais fina
+      // EngravingRules: slurEndpointThickness = 0.1, slurMidpointThickness = 0.22
+      // Média para stroke: 0.16 staff spaces
       final tiePaint = Paint()
         ..color = theme.tieColor ?? theme.noteheadColor
         ..style = PaintingStyle.stroke
-        ..strokeWidth = coordinates.staffSpace * 0.13
+        ..strokeWidth = coordinates.staffSpace * 0.16
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
 

@@ -44,7 +44,7 @@ class RepeatMarkRenderer extends BaseGlyphRenderer {
       options: GlyphDrawOptions(
         centerHorizontally: true,
         centerVertically: glyphInfo == null,
-        scale: 1.1,
+        scale: 0.65, // CORREÇÃO: Reduzido de 1.1 para 0.65 (60-70% do tamanho)
       ),
     );
   }

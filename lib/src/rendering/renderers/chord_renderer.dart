@@ -141,18 +141,17 @@ class ChordRenderer extends BaseGlyphRenderer {
       final extremeNoteIndex = sortedNotes.indexOf(extremeNote);
       final stemXOffset = xOffsets[extremeNoteIndex]!;
 
-      // 🆕 Para ACORDES: calcular comprimento customizado da haste
-      // A haste deve se ESTENDER por todas as notas do acorde!
+      // 🎯 CORREÇÃO CRÍTICA: Usar calculateChordStemLength do positioning engine
+      // A haste deve atravessar TODAS as notas do acorde!
       final noteheadGlyph = chord.duration.type.glyphName;
+      final beamCount = _getBeamCount(chord.duration.type);
       
-      // Calcular distância entre nota mais alta e mais baixa
-      final highestPos = sortedPositions.reduce((a, b) => a > b ? a : b);
-      final lowestPos = sortedPositions.reduce((a, b) => a < b ? a : b);
-      final chordSpan = (highestPos - lowestPos).abs();
-      
-      // Comprimento da haste para acorde = span das notas + comprimento padrão
-      // CRÍTICO: Para acordes, a haste atravessa todas as notas!
-      final customStemLength = (chordSpan * 0.5) + 3.5; // span + stem padrão
+      // Calcular comprimento proporcional usando positioning engine
+      final customStemLength = noteRenderer.positioningEngine.calculateChordStemLength(
+        noteStaffPositions: sortedPositions,
+        stemUp: stemUp,
+        beamCount: beamCount,
+      );
       
       final stemEnd = _renderChordStem(
         canvas,
@@ -172,6 +171,17 @@ class ChordRenderer extends BaseGlyphRenderer {
         );
       }
     }
+  }
+
+  /// Método auxiliar: calcular número de barras
+  int _getBeamCount(DurationType duration) {
+    return switch (duration) {
+      DurationType.eighth => 1,
+      DurationType.sixteenth => 2,
+      DurationType.thirtySecond => 3,
+      DurationType.sixtyFourth => 4,
+      _ => 0,
+    };
   }
 
   void _renderAccidental(
@@ -224,10 +234,21 @@ class ChordRenderer extends BaseGlyphRenderer {
       ..color = theme.staffLineColor
       ..strokeWidth = staffLineThickness;
 
-    // CORREÇÃO SMuFL: Usar método seguro ao invés de acesso direto
+    // CORREÇÃO CRÍTICA: Calcular centro horizontal CORRETO da nota
+    // x é a posição da borda ESQUERDA do glifo
     final noteheadInfo = metadata.getGlyphInfo('noteheadBlack');
+    final bbox = noteheadInfo?.boundingBox;
+    
+    // Centro relativo ao início do glyph (em staff spaces)
+    final centerOffsetSS = bbox != null
+        ? (bbox.bBoxSwX + bbox.bBoxNeX) / 2
+        : 1.18 / 2;
+    
+    final centerOffsetPixels = centerOffsetSS * coordinates.staffSpace;
+    final noteCenterX = x + centerOffsetPixels;
+    
     final noteWidth =
-        noteheadInfo?.boundingBox?.widthInPixels(coordinates.staffSpace) ??
+        bbox?.widthInPixels(coordinates.staffSpace) ??
         (coordinates.staffSpace * 1.18);
 
     // CORREÇÃO SMuFL: Consistente com legerLineExtension (0.4) do metadata
@@ -246,12 +267,13 @@ class ChordRenderer extends BaseGlyphRenderer {
         coordinates.staffBaseline.dy,
       );
 
-      // NÃO aplicar correção de baseline!
-      // As linhas do pentagrama não recebem correção,
-      // então as linhas suplementares também não devem receber.
+      // CORREÇÃO: Centralizar na posição REAL da nota
+      final lineStartX = noteCenterX - (totalWidth / 2);
+      final lineEndX = noteCenterX + (totalWidth / 2);
+      
       canvas.drawLine(
-        Offset(x - totalWidth / 2, y),
-        Offset(x + totalWidth / 2, y),
+        Offset(lineStartX, y),
+        Offset(lineEndX, y),
         paint,
       );
     }

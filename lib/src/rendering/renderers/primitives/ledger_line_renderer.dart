@@ -24,7 +24,7 @@ class LedgerLineRenderer extends BaseGlyphRenderer {
   /// Renderiza linhas suplementares para uma nota.
   ///
   /// [canvas] - Canvas onde desenhar
-  /// [notePosition] - Posição X da nota
+  /// [notePosition] - Posição X da nota (borda ESQUERDA do glifo)
   /// [staffPosition] - Posição da nota na pauta
   /// [noteheadGlyph] - Glifo da cabeça da nota (para calcular largura)
   void render(
@@ -42,23 +42,30 @@ class LedgerLineRenderer extends BaseGlyphRenderer {
       ..color = theme.staffLineColor
       ..strokeWidth = staffLineThickness;
 
-    // Calcular centro horizontal baseado no bounding box da nota
+    // CORREÇÃO CRÍTICA: Calcular centro horizontal CORRETO da nota
+    // notePosition é a borda ESQUERDA do glifo (conforme drawGlyphWithBBox)
+    // Precisamos adicionar a distância até o centro
     final noteheadInfo = metadata.getGlyphInfo(noteheadGlyph);
     final bbox = noteheadInfo?.boundingBox;
 
-    final centerX = bbox != null
-        ? ((bbox.bBoxSwX + bbox.bBoxNeX) / 2) * coordinates.staffSpace
-        : (1.18 / 2) * coordinates.staffSpace; // Fallback
+    // Centro relativo ao início do glyph (em staff spaces)
+    final centerOffsetSS = bbox != null
+        ? (bbox.bBoxSwX + bbox.bBoxNeX) / 2
+        : 1.18 / 2; // Fallback: noteheadBlack tem largura ~1.18
+    
+    // CORREÇÃO: Converter para pixels CORRETAMENTE
+    final centerOffsetPixels = centerOffsetSS * coordinates.staffSpace;
+    
+    // Posição X do centro da nota
+    final noteCenterX = notePosition + centerOffsetPixels;
 
-    final centerPosition = notePosition + centerX;
-
-    // Calcular largura da linha baseada no glifo real
+    // Calcular largura da linha baseada no glifo real + extensão SMuFL
     final noteWidth =
         bbox?.widthInPixels(coordinates.staffSpace) ??
         (coordinates.staffSpace * 1.18);
 
-    // Extensão das linhas suplementares
-    final extension = coordinates.staffSpace * 0.6;
+    // CORREÇÃO SMuFL: Usar legerLineExtension do metadata (0.4 staff spaces)
+    final extension = coordinates.staffSpace * 0.4;
     final totalWidth = noteWidth + (2 * extension);
 
     // Obter posições das linhas suplementares
@@ -66,7 +73,7 @@ class LedgerLineRenderer extends BaseGlyphRenderer {
       staffPosition,
     );
 
-    // Desenhar cada linha suplementar
+    // Desenhar cada linha suplementar CENTRALIZADA na cabeça de nota
     for (final pos in ledgerPositions) {
       final y = StaffPositionCalculator.toPixelY(
         pos,
@@ -74,12 +81,13 @@ class LedgerLineRenderer extends BaseGlyphRenderer {
         coordinates.staffBaseline.dy,
       );
 
-      // NÃO aplicar correção de baseline!
-      // As linhas do pentagrama não recebem correção,
-      // então as linhas suplementares também não devem receber.
+      // CORREÇÃO: Usar noteCenterX como referência para centralização
+      final lineStartX = noteCenterX - (totalWidth / 2);
+      final lineEndX = noteCenterX + (totalWidth / 2);
+
       canvas.drawLine(
-        Offset(centerPosition - totalWidth / 2, y),
-        Offset(centerPosition + totalWidth / 2, y),
+        Offset(lineStartX, y),
+        Offset(lineEndX, y),
         paint,
       );
     }

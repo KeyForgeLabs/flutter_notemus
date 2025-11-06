@@ -121,9 +121,9 @@ Supported types:
 - `tick` - Alternative mark
 - `caesura` - Double slash (`//`)
 
-### ✂️ Optimized Staff Lines
+### ✂️ Optimized Staff Lines with Configurable Margins
 
-Staff lines now **end exactly where music ends** - no more empty space:
+Staff lines now **end exactly where music ends** with **smart detection** of barline types:
 
 ```
 BEFORE: ═══════════════════════════════
@@ -133,6 +133,27 @@ AFTER:  ═══════════╡
         [music]  ║▌
                  ↑ ends here!
 ```
+
+**🎛️ Fine-tuning available** via adjustable constants in `StaffRenderer`:
+
+```dart
+// For NORMAL barlines (single, double, dashed, etc.)
+static const double systemEndMargin = -12.0;
+
+// For FINAL barline (BarlineType.final_)
+static const double finalBarlineMargin = -1.5;
+```
+
+**How it works:**
+- System **detects barline type** at the end of each staff system
+- Applies `systemEndMargin` for normal barlines (`BarlineType.single`, `double`, etc.)
+- Applies `finalBarlineMargin` for final barlines (`BarlineType.final_`)
+- **Independent control** - adjust one without affecting the other!
+
+**Why two different values?**
+- Normal barlines are thinner → need more negative margin (`-12.0`)
+- Final barlines are thicker → need less negative margin (`-1.5`)
+- Result: Perfect visual alignment for all barline types ✅
 
 ### 🎯 Intelligent Line Breaking
 
@@ -473,6 +494,40 @@ measure.add(Dynamic(
 
 ---
 
+## ⚙️ Advanced Customization
+
+### Staff Line Margins
+
+If you need to fine-tune where staff lines end in relation to barlines, you can adjust the constants in `lib/src/rendering/staff_renderer.dart`:
+
+```dart
+class StaffRenderer {
+  // 🎚️ MANUAL ADJUSTMENT CONSTANTS
+  
+  // Margin after NORMAL barlines (single, double, dashed, etc.)
+  // Negative values move lines closer to the barline
+  // -12.0 = Lines end exactly at normal barlines ✅
+  static const double systemEndMargin = -12.0;
+  
+  // Margin after FINAL barline (BarlineType.final_)
+  // -1.5 = Lines end exactly at final barline ✅
+  static const double finalBarlineMargin = -1.5;
+}
+```
+
+**When to adjust:**
+- Different font sizes may require different values
+- Custom barline implementations
+- Specific visual preferences
+
+**How to test:**
+1. Modify the constant values
+2. Run `flutter run` with hot reload
+3. Visually inspect barline alignment
+4. Adjust incrementally (0.5 pixel steps recommended)
+
+---
+
 ## 🎨 Themes
 
 Flutter Notemus supports customizable themes:
@@ -551,6 +606,7 @@ flutter run
 - ✅ **Repeat signs** (ritornelo forward/backward/both)
 - ✅ **Breath marks** (comma, tick, caesura)
 - ✅ **Optimized staff lines** (no empty space)
+- ✅ **Configurable staff line margins** (type-aware: normal vs final barlines)
 - ✅ **Intelligent line breaking** (4 measures per system)
 - ✅ Theme system
 - ✅ JSON parser
@@ -714,6 +770,10 @@ When adding new renderers or modifying existing ones:
 - SMuFL glyphs: **baseline = (0,0)** (typographic)
 - All "magic numbers" are **mathematical compensations** - document them!
 - Always verify against professional notation software (Finale, Sibelius, Dorico)
+- **Staff line margins** are type-aware:
+  - `systemEndMargin` for normal barlines (thinner)
+  - `finalBarlineMargin` for final barlines (thicker)
+  - System detects barline type automatically (`BarlineType.final_` vs others)
 
 ---
 

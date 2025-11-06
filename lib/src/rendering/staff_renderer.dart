@@ -23,6 +23,40 @@ import 'smufl_positioning_engine.dart';
 import 'staff_coordinate_system.dart';
 
 class StaffRenderer {
+  // CONSTANTES DE AJUSTE MANUAL
+
+  // Margem após BARRAS DE COMPASSO NORMAIS (single, double, dashed, etc)
+  // Controla onde as linhas do pentagrama terminam quando o sistema termina
+  // com uma barra de compasso normal (não uma barra final)
+  //
+  // Fórmula: endX = bounds.endX + (staffSpace + systemEndMargin)
+  //
+  // Aplica-se a:
+  //   - BarlineType.single (barra simples) 
+  //   - BarlineType.double (barra dupla)
+  //   - BarlineType.dashed (barra tracejada)
+  //   - Todos os tipos EXCETO BarlineType.final_
+  //
+  // Valores sugeridos:
+  //   -12.0 = Linhas terminam exatamente na barra de compasso 
+  //    0.0 = Margem padrão de 1 staff space
+  //   -3.0 = Linhas terminam um pouco antes da barra
+  static const double systemEndMargin =
+      -12.0; //  Termina exatamente na barra de compasso
+
+  // Margem após BARRA FINAL (BarlineType.final_)
+  // Controla onde as linhas do pentagrama terminam quando o sistema termina
+  // com uma barra final (linha fina + linha grossa)
+  //
+  // Aplica-se APENAS a:
+  //   - BarlineType.final_ (barra final) ✅
+  //
+  // Valores sugeridos:
+  //   -1.5 = Linhas terminam exatamente na barra final ✅
+  //    0.0 = Margem padrão de 1 staff space
+  static const double finalBarlineMargin =
+      -1.5; // ✅ Termina exatamente na barra final
+
   final StaffCoordinateSystem coordinates;
   final SmuflMetadata metadata;
   final MusicScoreTheme theme;
@@ -182,17 +216,22 @@ class StaffRenderer {
 
   /// Desenha linhas do pentagrama POR SISTEMA
   /// Cada sistema tem suas linhas terminando na última barline daquele sistema
-  void _drawStaffLinesBySystem(Canvas canvas, List<PositionedElement> elements) {
+  void _drawStaffLinesBySystem(
+    Canvas canvas,
+    List<PositionedElement> elements,
+  ) {
     if (elements.isEmpty) return;
-    
+
     // Agrupar elementos por sistema e calcular limites
     final systemBounds = <int, ({double startX, double endX, double y})>{};
-    
+    final lastBarlineType =
+        <int, BarlineType>{}; // Tipo da última barra de cada sistema
+
     for (final positioned in elements) {
       final system = positioned.system;
       final x = positioned.position.dx;
       final y = positioned.position.dy;
-      
+
       if (!systemBounds.containsKey(system)) {
         systemBounds[system] = (startX: x, endX: x, y: y);
       } else {
@@ -203,26 +242,39 @@ class StaffRenderer {
           y: current.y,
         );
       }
+
+      // Guardar o tipo da última barline de cada sistema
+      if (positioned.element is Barline) {
+        lastBarlineType[system] = (positioned.element as Barline).type;
+      }
     }
-    
+
     final paint = Paint()
       ..color = theme.staffLineColor
       ..strokeWidth = staffLineThickness
       ..style = PaintingStyle.stroke;
-    
+
     // Desenhar linhas para cada sistema separadamente
     for (final entry in systemBounds.entries) {
+      final systemNumber = entry.key;
       final bounds = entry.value;
-      
-      // Margem pequena após último elemento (para barra final)
-      final endX = bounds.endX + (coordinates.staffSpace * 2.5);
-      
+      final barlineType = lastBarlineType[systemNumber];
+
+      // Usar margem baseada no TIPO DE BARRA, não na posição do sistema
+      // Barra final (BarlineType.final_) usa finalBarlineMargin
+      // Outras barras usam systemEndMargin
+      final isFinalBarline = (barlineType == BarlineType.final_);
+      final margin = isFinalBarline ? finalBarlineMargin : systemEndMargin;
+      final endX = bounds.endX + (coordinates.staffSpace + margin);
+
       // Desenhar as 5 linhas do pentagrama para este sistema
       for (int line = 1; line <= 5; line++) {
         // Calcular Y baseado no sistema (cada sistema tem seu próprio Y)
         final baseY = bounds.y;
-        final lineY = baseY + (coordinates.getStaffLineY(line) - coordinates.getStaffLineY(3));
-        
+        final lineY =
+            baseY +
+            (coordinates.getStaffLineY(line) - coordinates.getStaffLineY(3));
+
         canvas.drawLine(
           Offset(coordinates.staffBaseline.dx, lineY),
           Offset(endX, lineY), // Linhas param no fim do sistema!

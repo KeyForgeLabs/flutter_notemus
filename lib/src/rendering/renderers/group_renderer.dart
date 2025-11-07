@@ -299,7 +299,8 @@ class GroupRenderer {
     }
   }
 
-  Map<int, List<int>> _identifyTieGroups(List<PositionedElement> elements) {
+  /// Identifica grupos de notas ligadas por ties (público para SlurRenderer)
+  Map<int, List<int>> identifyTieGroups(List<PositionedElement> elements) {
     final groups = <int, List<int>>{};
     int groupId = 0;
     for (int i = 0; i < elements.length; i++) {
@@ -328,7 +329,7 @@ class GroupRenderer {
     List<PositionedElement> elements,
     Clef currentClef,
   ) {
-    final tieGroups = _identifyTieGroups(elements);
+    final tieGroups = identifyTieGroups(elements);
     for (final group in tieGroups.values) {
       final startElement = elements[group.first];
       final endElement = elements[group.last];
@@ -424,7 +425,8 @@ class GroupRenderer {
     }
   }
 
-  Map<int, List<int>> _identifySlurGroups(List<PositionedElement> elements) {
+  /// Identifica grupos de notas ligadas por slurs (público para SlurRenderer)
+  Map<int, List<int>> identifySlurGroups(List<PositionedElement> elements) {
     final groups = <int, List<int>>{};
     int groupId = 0;
     for (int i = 0; i < elements.length; i++) {
@@ -451,7 +453,7 @@ class GroupRenderer {
     List<PositionedElement> elements,
     Clef currentClef,
   ) {
-    final slurGroups = _identifySlurGroups(elements);
+    final slurGroups = identifySlurGroups(elements);
     for (final group in slurGroups.values) {
       if (group.length < 2) continue;
 

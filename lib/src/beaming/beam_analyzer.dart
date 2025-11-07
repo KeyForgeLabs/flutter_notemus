@@ -1,21 +1,24 @@
 // lib/src/beaming/beam_analyzer.dart
 
-import 'dart:math';
 import 'package:flutter_notemus/core/note.dart';
 import 'package:flutter_notemus/core/time_signature.dart';
 import 'package:flutter_notemus/core/duration.dart';
 import 'package:flutter_notemus/src/beaming/beam_group.dart';
 import 'package:flutter_notemus/src/beaming/beam_segment.dart';
 import 'package:flutter_notemus/src/beaming/beam_types.dart';
+import 'package:flutter_notemus/src/beaming/beat_position_calculator.dart'; // ✅ ADICIONADO
+import 'package:flutter_notemus/src/rendering/smufl_positioning_engine.dart';
 
 /// Analisa grupos de notas e determina geometria e estrutura de beams
 class BeamAnalyzer {
   final double staffSpace;
   final double noteheadWidth;
+  final SMuFLPositioningEngine positioningEngine;
 
   BeamAnalyzer({
     required this.staffSpace,
     required this.noteheadWidth,
+    required this.positioningEngine,
   });
 
   /// Analisa um grupo de notas e retorna AdvancedBeamGroup configurado
@@ -26,40 +29,23 @@ class BeamAnalyzer {
     Map<Note, int>? noteStaffPositions,
     Map<Note, double>? noteYPositions, // ✅ NOVO: Y absoluto em pixels
   }) {
-    print('      🧪 [BeamAnalyzer] analyzeAdvancedBeamGroup INICIADO');
-    print('         Notas: ${notes.length}');
-    print('         noteXPositions disponível: ${noteXPositions != null}');
-    print('         noteStaffPositions disponível: ${noteStaffPositions != null}');
-    print('         noteYPositions disponível: ${noteYPositions != null}');
-    
     if (notes.isEmpty) {
       throw ArgumentError('Beam group cannot be empty');
     }
 
     final group = AdvancedBeamGroup(notes: notes);
-    print('         ✓ AdvancedBeamGroup criado');
 
     // Etapa 1: Determinar direção das hastes
-    print('         🔄 Etapa 1: Calculando direção das hastes...');
     group.stemDirection = _calculateStemDirection(notes, noteStaffPositions);
-    print('         ✓ Direção: ${group.stemDirection}');
 
     // Etapa 2: Calcular posições X
-    print('         📐 Etapa 2: Calculando posições X...');
     _calculateXPositions(group, noteXPositions);
-    print('         ✓ Posições X calculadas');
 
     // Etapa 3: Calcular geometria do primary beam
-    print('         📏 Etapa 3: Calculando geometria do primary beam...');
     _calculatePrimaryBeamGeometry(group, noteStaffPositions, noteYPositions);
-    print('         ✓ Primary beam: leftY=${group.leftY.toStringAsFixed(2)}, rightY=${group.rightY.toStringAsFixed(2)}, slope=${group.slope.toStringAsFixed(3)}');
 
     // Etapa 4: Analisar beams secundários
-    print('         🔍 Etapa 4: Analisando beams secundários...');
     _analyzeSecondaryBeams(group, timeSignature, noteStaffPositions);
-    print('         ✓ Beam segments: ${group.beamSegments.length}');
-    
-    print('      ✅ [BeamAnalyzer] analyzeAdvancedBeamGroup CONCLUÍDO');
 
     return group;
   }
@@ -106,6 +92,7 @@ class BeamAnalyzer {
   }
 
   /// Calcula posições X do início e fim do beam
+  /// ✅ USAR POSIÇÕES DAS HASTES (com âncoras SMuFL), não das notas!
   void _calculateXPositions(
     AdvancedBeamGroup group,
     Map<Note, double>? noteXPositions,
@@ -120,8 +107,33 @@ class BeamAnalyzer {
     final firstNote = group.notes.first;
     final lastNote = group.notes.last;
 
-    group.leftX = noteXPositions[firstNote] ?? 0;
-    group.rightX = (noteXPositions[lastNote] ?? 0) + noteheadWidth;
+    // ✅ CRÍTICO: Calcular posição X DA HASTE, não da nota!
+    // Usar EXATAMENTE a mesma lógica do StemRenderer (linhas 59-72)
+    final firstNoteX = noteXPositions[firstNote] ?? 0;
+    final lastNoteX = noteXPositions[lastNote] ?? 0;
+    
+    // Obter âncoras SMuFL
+    final firstNoteheadGlyph = firstNote.duration.type.glyphName;
+    final lastNoteheadGlyph = lastNote.duration.type.glyphName;
+    
+    final firstStemAnchor = group.stemDirection == StemDirection.up
+        ? positioningEngine.getStemUpAnchor(firstNoteheadGlyph)
+        : positioningEngine.getStemDownAnchor(firstNoteheadGlyph);
+    
+    final lastStemAnchor = group.stemDirection == StemDirection.up
+        ? positioningEngine.getStemUpAnchor(lastNoteheadGlyph)
+        : positioningEngine.getStemDownAnchor(lastNoteheadGlyph);
+    
+    // ✅ CRÍTICO: Aplicar ajustes visuais empíricos (IGUAL ao StemRenderer!)
+    const stemUpXOffset = 0.7;
+    const stemDownXOffset = -0.8;
+    final xOffset = group.stemDirection == StemDirection.up 
+        ? stemUpXOffset 
+        : stemDownXOffset;
+    
+    // Calcular posição X das hastes (IDÊNTICO ao StemRenderer linhas 66-72!)
+    group.leftX = firstNoteX + (firstStemAnchor.dx * staffSpace - xOffset);
+    group.rightX = lastNoteX + (lastStemAnchor.dx * staffSpace - xOffset);
   }
 
   /// Calcula geometria do primary beam (ângulo e posições Y)
@@ -135,7 +147,6 @@ class BeamAnalyzer {
 
     // ✅ SEMPRE usar Y absoluto (noteYPositions deve sempre estar disponível)
     if (noteYPositions == null || noteYPositions.isEmpty) {
-      print('         ❌ ERRO CRÍTICO: noteYPositions não está disponível!');
       throw ArgumentError('noteYPositions é obrigatório para cálculo de beams');
     }
 
@@ -143,24 +154,48 @@ class BeamAnalyzer {
     final lastNoteY = noteYPositions[lastNote];
 
     if (firstNoteY == null || lastNoteY == null) {
-      print('         ❌ ERRO: Posição Y não encontrada para primeira ou última nota');
       throw ArgumentError('Posições Y das notas não encontradas');
     }
 
-    // Calcular Y do beam baseado na posição real da nota
-    final stemLength = 3.5 * staffSpace;
-
-    if (group.stemDirection == StemDirection.up) {
-      group.leftY = firstNoteY - stemLength;
-      group.rightY = lastNoteY - stemLength;
-    } else {
-      group.leftY = firstNoteY + stemLength;
-      group.rightY = lastNoteY + stemLength;
+    // ✅ USAR EXATAMENTE A MESMA LÓGICA DO GroupRenderer!
+    // Calcular máximo de beams no grupo
+    int maxBeams = 0;
+    for (final note in group.notes) {
+      final beams = _getBeamCount(note.duration);
+      if (beams > maxBeams) maxBeams = beams;
     }
 
-    // slope é calculado automaticamente pelo getter
-    print('         ✅ Usando Y ABSOLUTO! firstY=${firstNoteY.toStringAsFixed(2)}, lastY=${lastNoteY.toStringAsFixed(2)}');
-    print('         beam leftY=${group.leftY.toStringAsFixed(2)}, rightY=${group.rightY.toStringAsFixed(2)}');
+    // Usar SMuFLPositioningEngine para calcular altura do beam (IGUAL ao GroupRenderer!)
+    final beamHeightSpaces = positioningEngine.calculateBeamHeight(
+      staffPosition: noteStaffPositions![firstNote]!,
+      stemUp: group.stemDirection == StemDirection.up,
+      allStaffPositions: noteStaffPositions.values.toList(),
+      beamCount: maxBeams,
+    );
+    final beamHeightPixels = beamHeightSpaces * staffSpace;
+
+    // Calcular posição média das notas (IGUAL ao GroupRenderer!)
+    final avgNoteY = (firstNoteY + lastNoteY) / 2;
+
+    // Calcular Y base do beam (IGUAL ao GroupRenderer!)
+    final beamBaseY = group.stemDirection == StemDirection.up
+        ? avgNoteY - beamHeightPixels
+        : avgNoteY + beamHeightPixels;
+
+    // Calcular ângulo usando positioning engine (IGUAL ao GroupRenderer!)
+    final beamAngleSpaces = positioningEngine.calculateBeamAngle(
+      noteStaffPositions: noteStaffPositions.values.toList(),
+      stemUp: group.stemDirection == StemDirection.up,
+    );
+    final beamAnglePixels = beamAngleSpaces * staffSpace;
+
+    // Calcular distância X
+    final xDistance = group.rightX - group.leftX;
+    final beamSlope = xDistance > 0 ? beamAnglePixels / xDistance : 0.0;
+
+    // Definir leftY e rightY usando interpolação linear (IGUAL ao GroupRenderer!)
+    group.leftY = beamBaseY;
+    group.rightY = beamBaseY + (beamSlope * xDistance);
   }
 
 
@@ -274,6 +309,8 @@ class BeamAnalyzer {
   }
 
   /// Determina se deve quebrar beam secundário nesta posição
+  ///
+  /// ✅ IMPLEMENTADO: Lógica profissional baseada em beat positions (Behind Bars)
   bool _shouldBreakSecondaryBeam(
     AdvancedBeamGroup group,
     int noteIndex,
@@ -298,9 +335,26 @@ class BeamAnalyzer {
       return false;
     }
 
-    // Por simplicidade, quebrar a cada 2 notas em níveis altos
-    // TODO: Implementar lógica mais sofisticada baseada em beat positions
-    return noteIndex % 2 == 0 && beamLevel >= 2;
+    // ✅ NOVA LÓGICA: Usar BeatPositionCalculator para decisões profissionais
+    final calculator = BeatPositionCalculator(timeSignature);
+    
+    // Calcular posição acumulada da nota atual
+    double accumulatedPosition = 0.0;
+    for (int i = 0; i < noteIndex; i++) {
+      accumulatedPosition += group.notes[i].duration.realValue;
+    }
+    
+    // Converter para NoteEvent e verificar se deve quebrar
+    final noteEvent = NoteEvent(
+      positionInBar: accumulatedPosition / calculator.barLengthInWholeNotes(),
+      duration: group.notes[noteIndex].duration.realValue,
+    );
+    
+    // Usar regra profissional do BeatPositionCalculator
+    final shouldBreak = calculator.shouldBreakBeam(noteEvent);
+    
+    // Aplicar apenas se beam level for alto o suficiente
+    return shouldBreak && beamLevel >= breakAtLevel;
   }
 
   /// Cria fractional beam (broken beam/stub)
@@ -341,43 +395,27 @@ class BeamAnalyzer {
 
   /// Retorna número de beams para uma duração
   int _getBeamCount(Duration duration) {
-    switch (duration.type) {
-      case DurationType.eighth:
-        return 1;
-      case DurationType.sixteenth:
-        return 2;
-      case DurationType.thirtySecond:
-        return 3;
-      case DurationType.sixtyFourth:
-        return 4;
-      case DurationType.oneHundredTwentyEighth:
-        return 5;
-      default:
-        return 0;
-    }
+    return switch (duration.type) {
+      DurationType.eighth => 1,
+      DurationType.sixteenth => 2,
+      DurationType.thirtySecond => 3,
+      DurationType.sixtyFourth => 4,
+      DurationType.oneHundredTwentyEighth => 5,
+      _ => 0, // Notas mais longas não têm beams
+    };
   }
 
   /// Retorna valor numérico da duração (para comparação)
   double _getDurationValue(Duration duration) {
-    switch (duration.type) {
-      case DurationType.whole:
-        return 1.0;
-      case DurationType.half:
-        return 0.5;
-      case DurationType.quarter:
-        return 0.25;
-      case DurationType.eighth:
-        return 0.125;
-      case DurationType.sixteenth:
-        return 0.0625;
-      case DurationType.thirtySecond:
-        return 0.03125;
-      case DurationType.sixtyFourth:
-        return 0.015625;
-      case DurationType.oneHundredTwentyEighth:
-        return 0.0078125;
-      default:
-        return 0.25;
-    }
+    return switch (duration.type) {
+      DurationType.whole => 1.0,
+      DurationType.half => 0.5,
+      DurationType.quarter => 0.25,
+      DurationType.eighth => 0.125,
+      DurationType.sixteenth => 0.0625,
+      DurationType.thirtySecond => 0.03125,
+      DurationType.sixtyFourth => 0.015625,
+      DurationType.oneHundredTwentyEighth => 0.0078125,
+    };
   }
 }

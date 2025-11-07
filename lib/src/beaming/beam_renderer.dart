@@ -6,12 +6,14 @@ import 'package:flutter_notemus/src/beaming/beam_group.dart';
 import 'package:flutter_notemus/src/beaming/beam_segment.dart';
 import 'package:flutter_notemus/src/beaming/beam_types.dart';
 import 'package:flutter_notemus/src/theme/music_score_theme.dart';
+import 'package:flutter_notemus/src/rendering/smufl_positioning_engine.dart';
 
 /// Renderiza beams (ligaduras de colcheia) geometricamente
 class BeamRenderer {
   final MusicScoreTheme theme;
   final double staffSpace;
   final double noteheadWidth;
+  final SMuFLPositioningEngine positioningEngine;
 
   // Métricas SMuFL
   late final double beamThickness;
@@ -22,6 +24,7 @@ class BeamRenderer {
     required this.theme,
     required this.staffSpace,
     required this.noteheadWidth,
+    required this.positioningEngine,
   }) {
     // SMuFL specifications
     beamThickness = 0.5 * staffSpace;
@@ -34,29 +37,20 @@ class BeamRenderer {
   void renderAdvancedBeamGroup(
     Canvas canvas,
     AdvancedBeamGroup group, {
+    Map<dynamic, double>? noteXPositions,
     Map<dynamic, double>? noteYPositions,
   }) {
-    print('      🎨 [BeamRenderer] renderAdvancedBeamGroup INICIADO');
-    print('         leftX: ${group.leftX.toStringAsFixed(2)}, rightX: ${group.rightX.toStringAsFixed(2)}');
-    print('         leftY: ${group.leftY.toStringAsFixed(2)}, rightY: ${group.rightY.toStringAsFixed(2)}');
-    print('         stemDirection: ${group.stemDirection}');
-    print('         beamSegments: ${group.beamSegments.length}');
-    print('         noteYPositions disponível: ${noteYPositions != null && noteYPositions.isNotEmpty}');
-
     final paint = Paint()
       ..color = theme.beamColor ?? theme.stemColor
       ..style = PaintingStyle.fill;
 
     // 1. Renderizar hastes
-    print('         🔹 Renderizando hastes...');
-    _renderStems(canvas, group, paint, noteYPositions);
+    _renderStems(canvas, group, paint, noteXPositions, noteYPositions);
 
     // 2. Renderizar todos os segmentos de beam
-    print('         🔹 Renderizando ${group.beamSegments.length} beam segments...');
     for (final segment in group.beamSegments) {
-      _renderBeamSegment(canvas, group, segment, paint);
+      _renderBeamSegment(canvas, group, segment, paint, noteXPositions);
     }
-    print('      ✅ [BeamRenderer] renderAdvancedBeamGroup CONCLUÍDO');
   }
 
   /// Renderiza as hastes do grupo
@@ -64,6 +58,7 @@ class BeamRenderer {
     Canvas canvas,
     AdvancedBeamGroup group,
     Paint paint,
+    Map<dynamic, double>? noteXPositions,
     Map<dynamic, double>? noteYPositions,
   ) {
     final stemPaint = Paint()
@@ -75,28 +70,36 @@ class BeamRenderer {
     for (int i = 0; i < group.notes.length; i++) {
       final note = group.notes[i];
 
-      // Calcular posição X da haste (centro da nota)
-      final noteX = _getNoteX(group, i);
-      final stemX = noteX + (noteheadWidth / 2);
-
-      // ✅ CORREÇÃO P1: Usar posição Y real da nota do layout
+      // ✅ Obter posição REAL da nota (não interpolar!)
+      final noteX = noteXPositions?[note] ?? group.leftX;
       final noteY = noteYPositions?[note] ?? _estimateNoteY(note, group);
+
+      // ✅ USAR EXATAMENTE A MESMA LÓGICA DO GroupRenderer! (beams simples que JÁ FUNCIONAM)
+      // Obter glyph da cabeça de nota
+      final noteheadGlyph = note.duration.type.glyphName;
+
+      // Obter âncora SMuFL (IDÊNTICO ao StemRenderer linha 59-61)
+      final stemAnchor = group.stemDirection == StemDirection.up
+          ? positioningEngine.getStemUpAnchor(noteheadGlyph)
+          : positioningEngine.getStemDownAnchor(noteheadGlyph);
+
+      // ✅ CRÍTICO: Aplicar ajustes visuais empíricos (IDÊNTICO ao StemRenderer!)
+      const stemUpXOffset = 0.7;
+      const stemDownXOffset = -0.8;
+      final xOffset = group.stemDirection == StemDirection.up
+          ? stemUpXOffset
+          : stemDownXOffset;
+
+      // Converter para pixels (IDÊNTICO ao StemRenderer linhas 66-72!)
+      final stemX = noteX + (stemAnchor.dx * staffSpace - xOffset);
 
       // Calcular posição Y do fim da haste (onde encontra o beam)
       final beamY = group.interpolateBeamY(stemX);
 
-      // Ajustar início da haste para sair corretamente da cabeça da nota
-      double stemStartY;
-      if (group.stemDirection == StemDirection.up) {
-        stemStartY = noteY - (staffSpace * 0.25); // Sair do topo da cabeça
-      } else {
-        stemStartY = noteY + (staffSpace * 0.25); // Sair da base da cabeça
-      }
-
-      // Desenhar haste
+      // Desenhar haste (IDÊNTICO ao GroupRenderer linha 294-298)
       canvas.drawLine(
-        Offset(stemX, stemStartY),
-        Offset(stemX, beamY),
+        Offset(stemX, noteY), // Inicia no noteY (posição da cabeça)
+        Offset(stemX, beamY), // Termina no beam
         stemPaint,
       );
     }
@@ -108,21 +111,39 @@ class BeamRenderer {
     AdvancedBeamGroup group,
     BeamSegment segment,
     Paint paint,
+    Map<dynamic, double>? noteXPositions,
   ) {
     // Calcular offset vertical para este nível de beam
-    final levelOffset = _calculateLevelOffset(segment.level, group.stemDirection);
+    final levelOffset = _calculateLevelOffset(
+      segment.level,
+      group.stemDirection,
+    );
 
     if (segment.isFractional) {
-      _renderFractionalBeam(canvas, group, segment, paint, levelOffset);
+      _renderFractionalBeam(
+        canvas,
+        group,
+        segment,
+        paint,
+        levelOffset,
+        noteXPositions,
+      );
     } else {
-      _renderFullBeam(canvas, group, segment, paint, levelOffset);
+      _renderFullBeam(
+        canvas,
+        group,
+        segment,
+        paint,
+        levelOffset,
+        noteXPositions,
+      );
     }
   }
 
   /// Calcula offset Y para um nível de beam
   double _calculateLevelOffset(int level, StemDirection stemDirection) {
     final offset = (level - 1) * (beamThickness + beamGap);
-    
+
     // Inverter direção para hastes para baixo
     return stemDirection == StemDirection.down ? -offset : offset;
   }
@@ -134,10 +155,37 @@ class BeamRenderer {
     BeamSegment segment,
     Paint paint,
     double levelOffset,
+    Map<dynamic, double>? noteXPositions,
   ) {
-    // Calcular posições X
-    final leftX = _getNoteX(group, segment.startNoteIndex) + (noteheadWidth / 2);
-    final rightX = _getNoteX(group, segment.endNoteIndex) + (noteheadWidth / 2);
+    // ✅ Usar posições REAIS das notas (igual às hastes!)
+    final startNote = group.notes[segment.startNoteIndex];
+    final endNote = group.notes[segment.endNoteIndex];
+
+    final startNoteX = noteXPositions?[startNote] ?? group.leftX;
+    final endNoteX = noteXPositions?[endNote] ?? group.rightX;
+
+    // Obter âncoras SMuFL para calcular posição X da haste
+    final startGlyph = startNote.duration.type.glyphName;
+    final endGlyph = endNote.duration.type.glyphName;
+
+    final startAnchor = group.stemDirection == StemDirection.up
+        ? positioningEngine.getStemUpAnchor(startGlyph)
+        : positioningEngine.getStemDownAnchor(startGlyph);
+
+    final endAnchor = group.stemDirection == StemDirection.up
+        ? positioningEngine.getStemUpAnchor(endGlyph)
+        : positioningEngine.getStemDownAnchor(endGlyph);
+
+    // Aplicar offsets empíricos
+    const stemUpXOffset = 0.7;
+    const stemDownXOffset = -0.8;
+    final xOffset = group.stemDirection == StemDirection.up
+        ? stemUpXOffset
+        : stemDownXOffset;
+
+    // Calcular X das hastes (IDÊNTICO ao _renderStems!)
+    final leftX = startNoteX + (startAnchor.dx * staffSpace - xOffset);
+    final rightX = endNoteX + (endAnchor.dx * staffSpace - xOffset);
 
     // Calcular posições Y ao longo da inclinação do beam
     final leftY = group.interpolateBeamY(leftX) + levelOffset;
@@ -145,7 +193,7 @@ class BeamRenderer {
 
     // Desenhar retângulo do beam
     final beamPath = Path();
-    
+
     if (group.stemDirection == StemDirection.up) {
       // Hastes para cima: beam fica embaixo
       beamPath.moveTo(leftX, leftY);
@@ -159,7 +207,7 @@ class BeamRenderer {
       beamPath.lineTo(rightX, rightY);
       beamPath.lineTo(leftX, leftY);
     }
-    
+
     beamPath.close();
     canvas.drawPath(beamPath, paint);
   }
@@ -171,12 +219,29 @@ class BeamRenderer {
     BeamSegment segment,
     Paint paint,
     double levelOffset,
+    Map<dynamic, double>? noteXPositions,
   ) {
     final noteIndex = segment.startNoteIndex;
-    final centerX = _getNoteX(group, noteIndex) + (noteheadWidth / 2);
+    final note = group.notes[noteIndex];
 
-    // Calcular Y na posição da nota
-    final centerY = group.interpolateBeamY(centerX) + levelOffset;
+    // ✅ Usar posição REAL da nota
+    final noteX = noteXPositions?[note] ?? group.leftX;
+
+    // Obter âncora SMuFL
+    final glyph = note.duration.type.glyphName;
+    final anchor = group.stemDirection == StemDirection.up
+        ? positioningEngine.getStemUpAnchor(glyph)
+        : positioningEngine.getStemDownAnchor(glyph);
+
+    // Aplicar offsets empíricos
+    const stemUpXOffset = 0.7;
+    const stemDownXOffset = -0.8;
+    final xOffset = group.stemDirection == StemDirection.up
+        ? stemUpXOffset
+        : stemDownXOffset;
+
+    // Calcular X da haste (IDÊNTICO ao _renderStems!)
+    final centerX = noteX + (anchor.dx * staffSpace - xOffset);
 
     // Comprimento do fractional beam
     final length = segment.fractionalLength ?? noteheadWidth;
@@ -196,7 +261,7 @@ class BeamRenderer {
 
     // Desenhar retângulo do fractional beam
     final beamPath = Path();
-    
+
     if (group.stemDirection == StemDirection.up) {
       beamPath.moveTo(leftX, leftY);
       beamPath.lineTo(rightX, rightY);
@@ -208,25 +273,15 @@ class BeamRenderer {
       beamPath.lineTo(rightX, rightY);
       beamPath.lineTo(leftX, leftY);
     }
-    
+
     beamPath.close();
     canvas.drawPath(beamPath, paint);
   }
 
-  /// Obtém posição X de uma nota no grupo
-  double _getNoteX(AdvancedBeamGroup group, int noteIndex) {
-    // Interpolação linear entre leftX e rightX
-    final totalNotes = group.notes.length - 1;
-    if (totalNotes == 0) return group.leftX;
-
-    final progress = noteIndex / totalNotes;
-    return group.leftX + (progress * (group.rightX - group.leftX - noteheadWidth));
-  }
-
-  /// Estima posição Y de uma nota (temporário - deve vir do layout)
+  /// Fallback para estimar Y quando noteYPositions está vazio (raro)
   double _estimateNoteY(dynamic note, AdvancedBeamGroup group) {
-    // Por enquanto, retornar uma posição padrão
-    // TODO: Integrar com sistema de layout real para obter Y das notas
+    // ✅ JÁ INTEGRADO: BeamRenderer recebe noteYPositions do LayoutEngine
+    // Este método é apenas fallback para casos extremos
     return staffSpace * 3.0; // Linha central aproximada
   }
 

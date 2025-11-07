@@ -8,7 +8,10 @@ import 'package:flutter_notemus/core/core.dart';
 import 'package:flutter_notemus/src/beaming/beam_analyzer.dart';
 import 'package:flutter_notemus/src/beaming/beam_group.dart';
 import 'package:flutter_notemus/src/layout/beam_grouper.dart';
+import 'package:flutter_notemus/src/layout/measure_validator.dart'; // ✅ ADICIONADO
 import 'package:flutter_notemus/src/rendering/staff_position_calculator.dart';
+import 'package:flutter_notemus/src/rendering/smufl_positioning_engine.dart';
+import 'package:flutter_notemus/src/smufl/smufl_metadata_loader.dart'; // ✅ ADICIONADO
 import 'spacing/spacing.dart' as spacing;
 
 class PositionedElement {
@@ -24,7 +27,7 @@ class LayoutCursor {
   final double availableWidth;
   final double systemMargin;
   final double systemHeight;
-  
+
   // Mapas para capturar posições das notas (para beaming)
   final Map<Note, double>? noteXPositions;
   final Map<Note, int>? noteStaffPositions;
@@ -104,20 +107,23 @@ class LayoutCursor {
   void addElement(MusicalElement element, List<PositionedElement> elements) {
     // BoundingBox support comentado temporariamente
     // TODO: Reativar quando BoundingBoxSupport estiver disponível
-    
+
     // Rastrear clave atual
     if (element is Clef) {
       _currentClef = element;
     }
-    
+
     // Capturar posições de notas para beaming avançado
     if (element is Note && _currentClef != null) {
       noteXPositions?[element] = _currentX;
-      
+
       // ✅ USAR STAFFPOSITIONCALCULATOR (fonte oficial de verdade!)
-      final staffPosition = StaffPositionCalculator.calculate(element.pitch, _currentClef!);
+      final staffPosition = StaffPositionCalculator.calculate(
+        element.pitch,
+        _currentClef!,
+      );
       noteStaffPositions?[element] = staffPosition;
-      
+
       // ✅ Converter para Y absoluto usando método oficial
       final noteY = StaffPositionCalculator.toPixelY(
         staffPosition,
@@ -125,8 +131,6 @@ class LayoutCursor {
         _currentY, // baseline do sistema
       );
       noteYPositions?[element] = noteY;
-      
-      print('      📍 [LayoutCursor] Nota ${element.pitch.step}${element.pitch.octave}: staffPos=$staffPosition, _currentY=${_currentY.toStringAsFixed(2)}, noteY=${noteY.toStringAsFixed(2)}');
     }
 
     elements.add(
@@ -143,7 +147,7 @@ class LayoutEngine {
   final Staff staff;
   final double availableWidth;
   final double staffSpace;
-  final dynamic metadata; // TODO: Usar SmuflMetadata quando disponível
+  final SmuflMetadata? metadata; // ✅ Tipagem correta aplicada
 
   // Sistema de Espaçamento Inteligente
   late final spacing.IntelligentSpacingEngine _spacingEngine;
@@ -175,7 +179,7 @@ class LayoutEngine {
   static const double noteMinSpacing = 3.5; // Base para espaçamento entre notas
   static const double measureEndPadding =
       3.0; // Espaço adequado ANTES da barline (agora corrigido!)
-  
+
   // QUEBRA DE LINHA INTELIGENTE
   static const int measuresPerSystem = 4; // Compassos por linha
 
@@ -192,11 +196,19 @@ class LayoutEngine {
       preferences: spacingPreferences ?? spacing.SpacingPreferences.normal,
     );
     _spacingEngine.initializeOpticalCompensator(staffSpace);
-    
+
+    // Inicializar positioning engine para beaming
+    // VALIDAÇÃO: metadata pode ser null em alguns contextos
+    if (metadata == null) {
+      throw ArgumentError('metadata é obrigatório para beaming avançado');
+    }
+    final positioningEngine = SMuFLPositioningEngine(metadataLoader: metadata!);
+
     // Inicializar sistema de beaming avançado
     _beamAnalyzer = BeamAnalyzer(
       staffSpace: staffSpace,
       noteheadWidth: noteheadBlackWidth * staffSpace,
+      positioningEngine: positioningEngine,
     );
   }
 
@@ -228,11 +240,15 @@ class LayoutEngine {
   /// Largura do bemol
   double get accidentalFlatWidth =>
       _getGlyphWidth('accidentalFlat', _accidentalFlatWidthFallback);
-  
-  /// Retorna os Advanced Beam Groups calculados pelo último layout
-  List<AdvancedBeamGroup> get advancedBeamGroups => List.unmodifiable(_advancedBeamGroups);
 
-  /// ✅ CORREÇÃO P1/P4: Expor posições Y das notas para renderização de hastes
+  /// Retorna os Advanced Beam Groups calculados pelo último layout
+  List<AdvancedBeamGroup> get advancedBeamGroups =>
+      List.unmodifiable(_advancedBeamGroups);
+
+  /// ✅ Expor posições X das notas para renderização precisa
+  Map<Note, double> get noteXPositions => Map.unmodifiable(_noteXPositions);
+
+  /// ✅ Expor posições Y das notas para renderização de hastes
   Map<Note, double> get noteYPositions => Map.unmodifiable(_noteYPositions);
 
   List<PositionedElement> layout() {
@@ -241,7 +257,7 @@ class LayoutEngine {
     _noteStaffPositions.clear();
     _noteYPositions.clear(); // ✅ NOVO
     _advancedBeamGroups.clear();
-    
+
     final cursor = LayoutCursor(
       staffSpace: staffSpace,
       availableWidth: availableWidth,
@@ -252,7 +268,7 @@ class LayoutEngine {
     );
 
     final List<PositionedElement> positionedElements = [];
-    
+
     // Armazenar compassos por sistema para justificação
     final systemMeasures = <int, List<int>>{};
     final measureStartIndices = <int, int>{};
@@ -288,49 +304,57 @@ class LayoutEngine {
         measure.inheritedTimeSignature = timeSignatureToUse;
       }
 
-      // Validação silenciosa (apenas contar estatísticas)
+      // ✅ Validação de compasso (silenciosa - apenas estatísticas)
       if (timeSignatureToUse != null) {
-        // TODO: Reativar validação quando MeasureValidator estiver disponível
-        // final validation = MeasureValidator.validateWithTimeSignature(
-        //   measure,
-        //   timeSignatureToUse,
-        //   allowAnacrusis: isFirst && i == 0,
-        // );
-        // if (validation.isValid) {
-        //   validMeasures++;
-        // } else {
-        //   invalidMeasures++;
-        // }
+        final validation = MeasureValidator.validateWithTimeSignature(
+          measure,
+          timeSignatureToUse,
+          allowAnacrusis: isFirst && i == 0,
+        );
+        if (validation.isValid) {
+          validMeasures++;
+        } else {
+          invalidMeasures++;
+        }
       }
 
       final measureWidth = _calculateMeasureWidthCursor(measure, isFirst);
 
       // QUEBRA INTELIGENTE: A cada N compassos OU se não couber
-      if (!isFirst && (isLastInSystem || cursor.needsSystemBreak(measureWidth))) {
+      if (!isFirst &&
+          (isLastInSystem || cursor.needsSystemBreak(measureWidth))) {
         cursor.startNewSystem();
       }
 
       // Guardar índice inicial do compasso para justificação
       final measureStartIndex = positionedElements.length;
       measureStartIndices[i] = measureStartIndex;
-      
+
       // Registrar compasso no sistema
       final currentSystem = cursor.currentSystem;
       systemMeasures[currentSystem] = systemMeasures[currentSystem] ?? [];
       systemMeasures[currentSystem]!.add(i);
-      
-      _layoutMeasureCursor(measure, cursor, positionedElements, cursor.isFirstMeasureInSystem);
+
+      _layoutMeasureCursor(
+        measure,
+        cursor,
+        positionedElements,
+        cursor.isFirstMeasureInSystem,
+      );
 
       // Verificar se compasso ATUAL termina com barline
-      final currentMeasureEndsWithBarline = measure.elements.isNotEmpty && 
-          measure.elements.last is Barline;
-      
+      final currentMeasureEndsWithBarline =
+          measure.elements.isNotEmpty && measure.elements.last is Barline;
+
       // Verificar se PRÓXIMO compasso começa com barline (ex: repeat)
-      final nextMeasure = (i < staff.measures.length - 1) ? staff.measures[i + 1] : null;
-      final nextMeasureStartsWithBarline = nextMeasure != null && 
-          nextMeasure.elements.isNotEmpty && 
+      final nextMeasure = (i < staff.measures.length - 1)
+          ? staff.measures[i + 1]
+          : null;
+      final nextMeasureStartsWithBarline =
+          nextMeasure != null &&
+          nextMeasure.elements.isNotEmpty &&
           nextMeasure.elements.first is Barline;
-      
+
       // Adicionar barline apropriada SOMENTE se:
       // 1. Próximo compasso não começar com uma
       // 2. Compasso atual não terminar com uma
@@ -357,90 +381,64 @@ class LayoutEngine {
     }
 
     // Relatório resumido (apenas se verbose)
-    if (verboseValidation && (validMeasures + invalidMeasures) > 0) {
-      print('Validacao: $validMeasures validos, $invalidMeasures invalidos');
-    }
+    if (verboseValidation && (validMeasures + invalidMeasures) > 0) {}
 
     // JUSTIFICAÇÃO HORIZONTAL: Esticar compassos para preencher largura
     _justifyHorizontally(positionedElements, systemMeasures);
-    
+
     // ANÁLISE DE BEAMING AVANÇADO: Criar AdvancedBeamGroups
-    _analyzeBeamGroups(currentTimeSignature);
+    _analyzeBeamGroups(currentTimeSignature, positionedElements);
 
     return positionedElements;
   }
-  
+
   /// Analisa beam groups e cria AdvancedBeamGroups para renderização
-  void _analyzeBeamGroups(TimeSignature? timeSignature) {
+  /// ✅ CORREÇÃO: Usar notas PROCESSADAS de positionedElements, não de measure.elements
+  void _analyzeBeamGroups(
+    TimeSignature? timeSignature,
+    List<PositionedElement> positionedElements,
+  ) {
     if (timeSignature == null) {
-      print('⚠️  [LayoutEngine] _analyzeBeamGroups: TimeSignature é null, abortando');
       return;
     }
-    
-    print('\n🔍 [LayoutEngine] _analyzeBeamGroups INICIADO');
-    print('   TimeSignature: ${timeSignature.numerator}/${timeSignature.denominator}');
-    print('   Total de compassos: ${staff.measures.length}');
-    print('   Notas capturadas (X positions): ${_noteXPositions.length}');
-    print('   Notas capturadas (Staff positions): ${_noteStaffPositions.length}');
-    print('   Notas capturadas (Y positions): ${_noteYPositions.length}');
-    
-    // Para cada compasso, detectar beam groups e analisar
-    int measureIndex = 0;
-    for (final measure in staff.measures) {
-      measureIndex++;
-      final notes = measure.elements.whereType<Note>().toList();
-      if (notes.isEmpty) {
-        print('   📏 Compasso $measureIndex: SEM NOTAS, pulando');
-        continue;
-      }
-      
-      print('   📏 Compasso $measureIndex: ${notes.length} notas encontradas');
-      
-      // Detectar beam groups usando o sistema existente
-      final beamGroups = BeamGrouper.groupNotesForBeaming(
-        notes,
-        timeSignature,
-        autoBeaming: measure.autoBeaming,
-        beamingMode: measure.beamingMode,
-        manualBeamGroups: measure.manualBeamGroups,
-      );
-      
-      print('   🔗 BeamGrouper retornou ${beamGroups.length} grupos');
-      
-      // Analisar cada beam group
-      int groupIndex = 0;
-      for (final beamGroup in beamGroups) {
-        groupIndex++;
-        print('      📦 Grupo $groupIndex: ${beamGroup.notes.length} notas, isValid=${beamGroup.isValid}');
-        
-        if (beamGroup.isValid && beamGroup.notes.length >= 2) {
-          try {
-            print('      🔬 Analisando com BeamAnalyzer...');
-            final advancedGroup = _beamAnalyzer.analyzeAdvancedBeamGroup(
-              beamGroup.notes,
-              timeSignature,
-              noteXPositions: _noteXPositions,
-              noteStaffPositions: _noteStaffPositions,
-              noteYPositions: _noteYPositions, // ✅ NOVO
-            );
-            _advancedBeamGroups.add(advancedGroup);
-            print('      ✅ AdvancedBeamGroup criado! Total: ${_advancedBeamGroups.length}');
-          } catch (e, stackTrace) {
-            // Ignorar erros de análise de beaming (não críticos)
-            print('      ❌ ERRO ao analisar beam group: $e');
-            print('      Stack trace: $stackTrace');
-            if (verboseValidation) {
-              print('Aviso: Erro ao analisar beam group: $e');
-            }
-          }
-        } else {
-          print('      ⏭️  Pulando grupo (inválido ou menos de 2 notas)');
-        }
-      }
+
+    // ✅ CORREÇÃO: Extrair notas PROCESSADAS diretamente de positionedElements
+    // As notas processadas são aquelas que foram adicionadas aos mapas
+    final processedNotes = positionedElements
+        .where((p) => p.element is Note)
+        .map((p) => p.element as Note)
+        .toList();
+
+    if (processedNotes.isEmpty) {
+      return;
     }
-    
-    print('🏁 [LayoutEngine] _analyzeBeamGroups FINALIZADO');
-    print('   Total de AdvancedBeamGroups criados: ${_advancedBeamGroups.length}\n');
+
+    // Detectar beam groups usando as notas PROCESSADAS
+    final beamGroups = BeamGrouper.groupNotesForBeaming(
+      processedNotes,
+      timeSignature,
+      autoBeaming: true, // Usar auto-beaming padrão
+      beamingMode: BeamingMode.automatic,
+    );
+
+    // Analisar cada beam group
+    int groupIndex = 0;
+    for (final beamGroup in beamGroups) {
+      groupIndex++;
+
+      if (beamGroup.isValid && beamGroup.notes.length >= 2) {
+        try {
+          final advancedGroup = _beamAnalyzer.analyzeAdvancedBeamGroup(
+            beamGroup.notes,
+            timeSignature,
+            noteXPositions: _noteXPositions,
+            noteStaffPositions: _noteStaffPositions,
+            noteYPositions: _noteYPositions,
+          );
+          _advancedBeamGroups.add(advancedGroup);
+        } catch (e, stackTrace) {}
+      } else {}
+    }
   }
 
   /// Justifica horizontalmente os compassos para preencher a largura disponível
@@ -449,39 +447,39 @@ class LayoutEngine {
     Map<int, List<int>> systemMeasures,
   ) {
     final usableWidth = availableWidth - (systemMargin * staffSpace * 2);
-    
+
     for (final entry in systemMeasures.entries) {
       final system = entry.key;
       final measures = entry.value;
-      
+
       if (measures.isEmpty) continue;
-      
+
       // Encontrar X mínimo e máximo dos elementos neste sistema
       double minX = double.infinity;
       double maxX = 0;
-      
+
       for (final positioned in elements) {
         if (positioned.system == system) {
           if (positioned.position.dx < minX) minX = positioned.position.dx;
           if (positioned.position.dx > maxX) maxX = positioned.position.dx;
         }
       }
-      
+
       final usedWidth = maxX - minX;
       final extraSpace = usableWidth - usedWidth;
-      
+
       // Se há espaço extra, distribuir proporcionalmente
       if (extraSpace > 0 && measures.length > 1) {
         // Ajustar posições dos elementos após cada compasso
         for (int i = 0; i < elements.length; i++) {
           final positioned = elements[i];
           if (positioned.system != system) continue;
-          
+
           // Calcular proporção de posição no sistema (simplificado)
-          final positionRatio = (maxX - minX) > 0 
+          final positionRatio = (maxX - minX) > 0
               ? (positioned.position.dx - minX) / (maxX - minX)
               : 0.0;
-          
+
           // Aplicar offset proporcional baseado na posição
           final offset = extraSpace * positionRatio;
           elements[i] = PositionedElement(
@@ -737,7 +735,7 @@ class LayoutEngine {
 
     if (element is Dynamic) return 2.0 * staffSpace;
     if (element is Ornament) return 1.0 * staffSpace;
-    
+
     if (element is Tuplet) {
       // CRÍTICO: Calcular largura baseada nas notas INTERNAS do tuplet
       final numElements = element.elements.length;
@@ -745,7 +743,7 @@ class LayoutEngine {
       final totalWidth = numElements * elementSpacing;
       return totalWidth;
     }
-    
+
     if (element is TempoMark)
       return 0.0; // TempoMark renderizado acima, sem largura
 

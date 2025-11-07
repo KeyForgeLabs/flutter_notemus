@@ -18,6 +18,7 @@ import 'renderers/group_renderer.dart';
 import 'renderers/note_renderer.dart';
 import 'renderers/ornament_renderer.dart';
 import 'renderers/rest_renderer.dart';
+import 'renderers/slur_renderer.dart'; // ✅ NOVO: Ligaduras profissionais
 import 'renderers/symbol_and_text_renderer.dart';
 import 'renderers/tuplet_renderer.dart';
 import 'smufl_positioning_engine.dart';
@@ -82,6 +83,7 @@ class StaffRenderer {
   late final RestRenderer restRenderer;
   late final SymbolAndTextRenderer symbolAndTextRenderer;
   late final TupletRenderer tupletRenderer;
+  late final SlurRenderer slurRenderer; // ✅ NOVO: Renderizador profissional
 
   StaffRenderer({
     required this.coordinates,
@@ -138,6 +140,7 @@ class StaffRenderer {
       theme: theme,
       staffSpace: coordinates.staffSpace,
       noteheadWidth: metadata.getGlyphWidth('noteheadBlack') * coordinates.staffSpace,
+      positioningEngine: positioningEngine,
     );
 
     breathRenderer = BreathRenderer(
@@ -202,6 +205,12 @@ class StaffRenderer {
       noteRenderer: noteRenderer,
       restRenderer: restRenderer,
     );
+    
+    // ✅ Inicializar SlurRenderer profissional
+    slurRenderer = SlurRenderer(
+      staffSpace: coordinates.staffSpace,
+      metadata: metadata,
+    );
   }
 
   // Set de notas que estão em advanced beam groups
@@ -234,41 +243,51 @@ class StaffRenderer {
 
     // Segunda passagem: renderizar ADVANCED BEAMS (se disponível)
     if (layoutEngine != null && layoutEngine.advancedBeamGroups.isNotEmpty) {
-      print('\n🎨 [StaffRenderer] Renderizando ${layoutEngine.advancedBeamGroups.length} Advanced Beams');
-      int beamIndex = 0;
-      // ✅ CORREÇÃO P1/P4: Obter posições Y das notas do layout
+      final noteXPositions = layoutEngine.noteXPositions;
       final noteYPositions = layoutEngine.noteYPositions;
-      print('   📍 Posições Y disponíveis: ${noteYPositions.length} notas');
 
       for (final advancedGroup in layoutEngine.advancedBeamGroups) {
-        beamIndex++;
-        print('   🎨 Renderizando beam $beamIndex/${layoutEngine.advancedBeamGroups.length}');
-        print('      Notas: ${advancedGroup.notes.length}, Segments: ${advancedGroup.beamSegments.length}');
-        // ✅ CORREÇÃO P1/P4: Passar posições Y reais para o renderer
         beamRenderer.renderAdvancedBeamGroup(
           canvas,
           advancedGroup,
+          noteXPositions: noteXPositions,
           noteYPositions: noteYPositions,
         );
       }
-      print('   ✅ Todos os beams renderizados!\n');
-    } else {
-      print('\n⚠️  [StaffRenderer] Nenhum Advanced Beam para renderizar');
-      if (layoutEngine == null) {
-        print('   Motivo: layoutEngine é null');
-      } else {
-        print('   Motivo: advancedBeamGroups está vazio (${layoutEngine.advancedBeamGroups.length} grupos)');
-      }
     }
 
-    // Terceira passagem: renderizar elementos de grupo simples (ties, slurs)
+    // Terceira passagem: renderizar elementos de grupo (beams simples, ties, slurs)
     if (currentClef != null) {
       // Pular beams simples se temos advanced beams
       if (layoutEngine == null || layoutEngine.advancedBeamGroups.isEmpty) {
         groupRenderer.renderBeams(canvas, elements, currentClef!);
       }
-      groupRenderer.renderTies(canvas, elements, currentClef!);
-      groupRenderer.renderSlurs(canvas, elements, currentClef!);
+      
+      // ✅ USAR SLURRENDERER PROFISSIONAL ao invés do GroupRenderer
+      final tieGroups = groupRenderer.identifyTieGroups(elements);
+      final slurGroups = groupRenderer.identifySlurGroups(elements);
+      
+      print('\n🎵 [SLUR RENDERER] Renderizando ligaduras...');
+      print('   🔗 Tie groups: ${tieGroups.length}');
+      print('   🎶 Slur groups: ${slurGroups.length}');
+      
+      slurRenderer.renderTies(
+        canvas: canvas,
+        tieGroups: tieGroups,
+        positions: elements,
+        currentClef: currentClef!,
+        color: theme.tieColor ?? theme.noteheadColor,
+      );
+      
+      slurRenderer.renderSlurs(
+        canvas: canvas,
+        slurGroups: slurGroups,
+        positions: elements,
+        currentClef: currentClef!,
+        color: theme.slurColor ?? theme.noteheadColor,
+      );
+      
+      print('   ✅ Ligaduras renderizadas!\n');
     }
   }
 

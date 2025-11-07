@@ -46,11 +46,13 @@ class _MusicScoreState extends State<MusicScore> {
   late Future<void> _metadataFuture;
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
+  late SmuflMetadata _metadata;
 
   @override
   void initState() {
     super.initState();
-    _metadataFuture = SmuflMetadata().load();
+    _metadata = SmuflMetadata();
+    _metadataFuture = _metadata.load();
   }
 
   @override
@@ -81,6 +83,7 @@ class _MusicScoreState extends State<MusicScore> {
               widget.staff,
               availableWidth: constraints.maxWidth,
               staffSpace: widget.staffSpace,
+              metadata: _metadata,
             );
 
             final positionedElements = layoutEngine.layout();
@@ -221,14 +224,43 @@ class MusicScorePainter extends CustomPainter {
   /// Retorna um range (Set) de índices de sistemas que intersectam o viewport.
   /// Adiciona margem de 1 sistema acima e abaixo para suavidade no scroll.
   Set<int> _calculateVisibleSystems(double systemHeight) {
+    // VALIDAÇÃO: Prevenir divisão por zero e valores inválidos
+    if (systemHeight <= 0 || !systemHeight.isFinite) {
+      // Fallback: renderizar apenas sistema 0
+      return {0};
+    }
+    
+    if (!viewportSize.height.isFinite || viewportSize.height <= 0) {
+      // Fallback: renderizar apenas sistema 0
+      return {0};
+    }
+    
+    if (!scrollOffsetY.isFinite) {
+      // Fallback: renderizar apenas sistema 0
+      return {0};
+    }
+    
     // Viewport Y range (com margem)
     final margin = systemHeight; // 1 sistema de margem
     final viewportTop = scrollOffsetY - margin;
     final viewportBottom = scrollOffsetY + viewportSize.height + margin;
 
-    // Calcular sistemas visíveis
-    final firstSystem = (viewportTop / systemHeight).floor().clamp(0, 999);
-    final lastSystem = (viewportBottom / systemHeight).ceil().clamp(0, 999);
+    // Calcular sistemas visíveis com proteção contra Infinity
+    final firstSystemRaw = (viewportTop / systemHeight).floor();
+    final lastSystemRaw = (viewportBottom / systemHeight).ceil();
+    
+    // Validar que os valores são finitos antes de fazer clamp
+    if (!firstSystemRaw.isFinite || !lastSystemRaw.isFinite) {
+      return {0};
+    }
+    
+    final firstSystem = firstSystemRaw.clamp(0, 999);
+    final lastSystem = lastSystemRaw.clamp(0, 999);
+    
+    // Validar range
+    if (lastSystem < firstSystem) {
+      return {0};
+    }
 
     // Retornar range como Set
     return Set<int>.from(

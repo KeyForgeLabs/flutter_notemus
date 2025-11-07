@@ -229,10 +229,7 @@ class SlursTiesExample extends StatelessWidget {
                 Note(
                   pitch: const Pitch(step: 'A', octave: 4),
                   duration: const Duration(DurationType.quarter),
-                ),
-                AdvancedSlur(
-                  type: SlurType.start,
-                  direction: SlurDirection.up,
+                  slur: SlurType.start, // ✅ Slur como propriedade da nota
                 ),
                 Note(
                   pitch: const Pitch(step: 'B', octave: 4),
@@ -241,10 +238,7 @@ class SlursTiesExample extends StatelessWidget {
                 Note(
                   pitch: const Pitch(step: 'C', octave: 5),
                   duration: const Duration(DurationType.quarter),
-                ),
-                AdvancedSlur(
-                  type: SlurType.end,
-                  direction: SlurDirection.up,
+                  slur: SlurType.end, // ✅ Slur como propriedade da nota
                 ),
                 Rest(duration: const Duration(DurationType.quarter)),
               ],
@@ -257,10 +251,7 @@ class SlursTiesExample extends StatelessWidget {
                 Note(
                   pitch: const Pitch(step: 'E', octave: 5),
                   duration: const Duration(DurationType.quarter),
-                ),
-                AdvancedSlur(
-                  type: SlurType.start,
-                  direction: SlurDirection.down,
+                  slur: SlurType.start, // ✅ Slur como propriedade da nota
                 ),
                 Note(
                   pitch: const Pitch(step: 'F', octave: 5),
@@ -269,10 +260,7 @@ class SlursTiesExample extends StatelessWidget {
                 Note(
                   pitch: const Pitch(step: 'G', octave: 5),
                   duration: const Duration(DurationType.quarter),
-                ),
-                AdvancedSlur(
-                  type: SlurType.end,
-                  direction: SlurDirection.down,
+                  slur: SlurType.end, // ✅ Slur como propriedade da nota
                 ),
                 Rest(duration: const Duration(DurationType.quarter)),
               ],
@@ -282,33 +270,24 @@ class SlursTiesExample extends StatelessWidget {
               description: 'Múltiplas ligaduras sobrepostas.',
               elements: [
                 Clef(clefType: ClefType.treble),
+                // Slur longo (externo)
                 Note(
                   pitch: const Pitch(step: 'C', octave: 4),
                   duration: const Duration(DurationType.quarter),
-                  slur: SlurType.start, // Slur externo
+                  slur: SlurType.start,
                 ),
                 Note(
                   pitch: const Pitch(step: 'D', octave: 4),
                   duration: const Duration(DurationType.quarter),
                 ),
-                AdvancedSlur( // Slur interno
-                  type: SlurType.start,
-                  direction: SlurDirection.up,
-                  voiceNumber: 2,
-                ),
                 Note(
                   pitch: const Pitch(step: 'E', octave: 4),
                   duration: const Duration(DurationType.quarter),
                 ),
-                AdvancedSlur( // Fim slur interno
-                  type: SlurType.end,
-                  direction: SlurDirection.up,
-                  voiceNumber: 2,
-                ),
                 Note(
                   pitch: const Pitch(step: 'F', octave: 4),
                   duration: const Duration(DurationType.quarter),
-                  slur: SlurType.end, // Fim slur externo
+                  slur: SlurType.end,
                 ),
               ],
             ),
@@ -349,14 +328,17 @@ class SlursTiesExample extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Container(
-              height: 120,
+              height: 160, // ✅ Aumentado de 120 para 160 (mais espaço vertical)
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border.all(color: Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(4.0),
               ),
-              child: MusicScore(
-                staff: staff,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0), // ✅ Mais padding horizontal
+                child: MusicScore(
+                  staff: staff,
+                ),
               ),
             ),
           ],

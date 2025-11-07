@@ -144,20 +144,20 @@ class EngravingRules {
   // ====================
 
   /// Altura mínima de tie
-  /// OSMD: 0.28 staff spaces → REDUZIDO para 0.15 SS (ties mais achatados)
-  double tieHeightMinimum = 0.15;
+  /// Behind Bars: Ties devem ser discretos, altura mínima ~0.1 SS
+  double tieHeightMinimum = 0.1;
 
   /// Altura máxima de tie
-  /// OSMD: 1.2 staff spaces → REDUZIDO para 0.6 SS (Behind Bars)
-  double tieHeightMaximum = 0.6;
+  /// Behind Bars: Mesmo para ties longos, máximo 0.4 SS
+  double tieHeightMaximum = 0.4;
 
   /// Constante K para interpolação linear de altura de tie: y = k*x + d
-  /// OSMD: 0.0288 → REDUZIDO para 0.015 (curva mais suave)
-  double tieHeightInterpolationK = 0.015;
+  /// Reduzido drasticamente para ties mais achatados (Behind Bars)
+  double tieHeightInterpolationK = 0.008;
 
   /// Constante D para interpolação linear de altura de tie: y = k*x + d
-  /// OSMD: 0.136 → REDUZIDO para 0.08 (altura base menor)
-  double tieHeightInterpolationD = 0.08;
+  /// Altura base muito pequena para ties discretos
+  double tieHeightInterpolationD = 0.05;
 
   /// Calcula altura de tie baseado na largura
   /// Fórmula: height = k * width + d, limitado por min/max

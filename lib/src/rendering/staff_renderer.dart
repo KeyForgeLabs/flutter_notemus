@@ -271,6 +271,36 @@ class StaffRenderer {
       print('   🔗 Tie groups: ${tieGroups.length}');
       print('   🎶 Slur groups: ${slurGroups.length}');
       
+      // 🐛 DEBUG: Verificar posições dos elementos e detectar acordes
+      if (tieGroups.isNotEmpty || elements.any((e) => e.element is Note && (e.element as Note).tie != null)) {
+        print('   🐛 DEBUG: Amostra de elementos posicionados:');
+        for (var i = 0; i < elements.length.clamp(0, 8); i++) {
+          final elem = elements[i];
+          if (elem.element is Note) {
+            final note = elem.element as Note;
+            final tieInfo = note.tie != null ? ' [TIE: ${note.tie}]' : '';
+            print('      Note ${note.pitch.step}${note.pitch.octave}: position=${elem.position}$tieInfo');
+          }
+        }
+        
+        // Detectar acordes (notas na mesma posição X)
+        final notesByX = <double, List<Note>>{};
+        for (var elem in elements) {
+          if (elem.element is Note) {
+            final x = elem.position.dx;
+            notesByX[x] = notesByX[x] ?? [];
+            notesByX[x]!.add(elem.element as Note);
+          }
+        }
+        final chords = notesByX.entries.where((e) => e.value.length > 1).toList();
+        if (chords.isNotEmpty) {
+          print('   🎼 ACORDES detectados: ${chords.length}');
+          for (var chord in chords) {
+            print('      X=${chord.key.toStringAsFixed(1)}: ${chord.value.length} notas');
+          }
+        }
+      }
+      
       slurRenderer.renderTies(
         canvas: canvas,
         tieGroups: tieGroups,

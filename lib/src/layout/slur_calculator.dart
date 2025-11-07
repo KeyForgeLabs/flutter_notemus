@@ -269,11 +269,11 @@ class SlurCalculator {
     final dx = end.dx - start.dx;
     // midX não usado, removido para evitar warning
 
-    // Para ties, usar ângulo tangente fixo de 45° (mais simétrico)
-    final tangentAngle = 45.0 * math.pi / 180;
+    // Para ties, usar ângulo tangente MENOR (Behind Bars: ties devem ser achatados)
+    final tangentAngle = 25.0 * math.pi / 180; // Reduzido de 45° para 25°
 
-    // Comprimento dos vetores de controle: 40% do comprimento total
-    final controlLength = dx * 0.4;
+    // Comprimento dos vetores de controle: 35% do comprimento total (reduzido)
+    final controlLength = dx * 0.35; // Reduzido de 0.4 para 0.35
 
     // P0: ponto inicial
     final p0 = start;

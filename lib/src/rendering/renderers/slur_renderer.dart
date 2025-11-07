@@ -160,12 +160,13 @@ class SlurRenderer {
       final startNoteY = startElement.position.dy;
       final endNoteY = endElement.position.dy;
       
-      print('            🐛 DEBUG: startElement.position.dy = $startNoteY');
-      print('            🐛 DEBUG: endElement.position.dy = $endNoteY');
+      print('            🐛 DEBUG startNoteY: $startNoteY, endNoteY: $endNoteY');
+      print('            🐛 DEBUG startElement.position: ${startElement.position}');
+      print('            🐛 DEBUG endElement.position: ${endElement.position}');
       
-      // ✅ AUMENTAR clearance para evitar sobreposição (Behind Bars: 0.5 SS mínimo)
-      // Ties devem ter clearance de pelo menos 0.5 SS da cabeça da nota
-      final clearance = staffSpace * 0.6; // Aumentado de 0.25 para 0.6
+      // ✅ Clearance discreto para ties (Behind Bars: 0.3-0.4 SS)
+      // Ties devem ser próximos às cabeças, mas sem tocar
+      final clearance = staffSpace * 0.35; // Reduzido para ties mais discretos
       
       final startPoint = Offset(
         startElement.position.dx + noteWidth * 0.75,
@@ -260,31 +261,34 @@ class SlurRenderer {
     final staffPos = StaffPositionCalculator.calculate(note.pitch, clef);
     final stemUp = staffPos <= 0;
     
-    // ✅ AUMENTAR clearance considerando hastes (Behind Bars)
-    // - Slur acima + stem up: clearance de 1.5 SS (stem height ~3.5 SS)
-    // - Slur abaixo + stem down: clearance de 1.5 SS
-    // - Sem haste na direção do slur: clearance de 0.6 SS
+    // ✅ REGRAS BEHIND BARS: Slurs devem evitar hastes!
+    // - Slur na MESMA direção da haste → começa/termina na PONTA da haste (3.5 SS)
+    // - Slur na direção OPOSTA → começa/termina próximo à cabeça da nota
     double yOffset;
     String clearanceReason;
     
+    const double stemHeight = 3.5; // Altura padrão da haste (SMuFL)
+    const double clearanceFromStem = 0.3; // Pequena margem após a haste
+    
     if (above && stemUp) {
-      // Slur acima + stem up: evitar haste (3.5 SS de stem + 0.5 SS margem)
-      yOffset = -staffSpace * 1.8;
-      clearanceReason = 'Slur ACIMA + stem UP → clearance 1.8 SS';
+      // Slur ACIMA + stem UP: ir até a PONTA da haste + margem
+      yOffset = -(stemHeight + clearanceFromStem) * staffSpace;
+      clearanceReason = 'Slur ACIMA + stem UP → ponta da haste (${stemHeight}SS + ${clearanceFromStem}SS)';
     } else if (!above && !stemUp) {
-      // Slur abaixo + stem down: evitar haste
-      yOffset = staffSpace * 1.8;
-      clearanceReason = 'Slur ABAIXO + stem DOWN → clearance 1.8 SS';
+      // Slur ABAIXO + stem DOWN: ir até a PONTA da haste + margem
+      yOffset = (stemHeight + clearanceFromStem) * staffSpace;
+      clearanceReason = 'Slur ABAIXO + stem DOWN → ponta da haste (${stemHeight}SS + ${clearanceFromStem}SS)';
     } else {
-      // Sem haste no caminho: clearance padrão
-      yOffset = staffSpace * 0.6 * (above ? -1 : 1);
-      clearanceReason = 'Sem haste no caminho → clearance 0.6 SS';
+      // Slur na direção OPOSTA da haste: próximo à cabeça da nota
+      yOffset = staffSpace * 0.4 * (above ? -1 : 1);
+      clearanceReason = 'Direção oposta da haste → próximo à cabeça (0.4 SS)';
     }
     
     print('            🎯 Clearance: $clearanceReason (staffPos=$staffPos, stemUp=$stemUp, above=$above)');
     
-    // Offset X: início à esquerda (30%), fim à direita (70%)
-    final xOffset = isStart ? noteWidth * 0.3 : noteWidth * 0.7;
+    // Offset X: início à esquerda (35%), fim à direita (85%)
+    // Fim mais à direita para não ultrapassar a nota
+    final xOffset = isStart ? noteWidth * 0.35 : noteWidth * 0.85;
     
     return Offset(
       notePos.dx + xOffset,

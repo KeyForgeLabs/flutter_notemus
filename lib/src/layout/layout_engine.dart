@@ -113,6 +113,41 @@ class LayoutCursor {
       _currentClef = element;
     }
 
+    // ✅ SUPORTE A ACORDES: Expandir notas do acorde em elementos separados
+    if (element is Chord && _currentClef != null) {
+      for (final note in element.notes) {
+        // Calcular posição Y para cada nota do acorde
+        final staffPosition = StaffPositionCalculator.calculate(
+          note.pitch,
+          _currentClef!,
+        );
+        
+        final noteY = StaffPositionCalculator.toPixelY(
+          staffPosition,
+          staffSpace,
+          _currentY,
+        );
+        
+        // Registrar nota para beaming
+        noteXPositions?[note] = _currentX;
+        noteStaffPositions?[note] = staffPosition;
+        noteYPositions?[note] = noteY;
+        
+        // Adicionar cada nota do acorde como elemento separado (mesma pos X, Y diferente)
+        elements.add(
+          PositionedElement(
+            note,
+            Offset(_currentX, noteY),
+            system: _currentSystem,
+          ),
+        );
+      }
+      return; // Não adicionar o Chord como elemento único
+    }
+    
+    // Calcular posição Y específica para notas (baseado no pitch)
+    double elementY = _currentY; // Default: baseline do sistema
+    
     // Capturar posições de notas para beaming avançado
     if (element is Note && _currentClef != null) {
       noteXPositions?[element] = _currentX;
@@ -131,12 +166,15 @@ class LayoutCursor {
         _currentY, // baseline do sistema
       );
       noteYPositions?[element] = noteY;
+      
+      // ✅ CRÍTICO: Usar o noteY calculado, não o _currentY genérico!
+      elementY = noteY;
     }
 
     elements.add(
       PositionedElement(
         element,
-        Offset(_currentX, _currentY),
+        Offset(_currentX, elementY), // ✅ Usar elementY específico!
         system: _currentSystem,
       ),
     );

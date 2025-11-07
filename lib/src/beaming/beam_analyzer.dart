@@ -128,206 +128,41 @@ class BeamAnalyzer {
   void _calculatePrimaryBeamGeometry(
     AdvancedBeamGroup group,
     Map<Note, int>? noteStaffPositions,
-    Map<Note, double>? noteYPositions, // ✅ NOVO: Y absoluto em pixels
+    Map<Note, double>? noteYPositions, // ✅ Y absoluto em pixels
   ) {
     final firstNote = group.notes.first;
     final lastNote = group.notes.last;
 
-    // ✅ PRIORIDADE 1: Usar Y absoluto se disponível
-    if (noteYPositions != null && noteYPositions.isNotEmpty) {
-      final firstNoteY = noteYPositions[firstNote];
-      final lastNoteY = noteYPositions[lastNote];
-      
-      if (firstNoteY != null && lastNoteY != null) {
-        // Calcular Y do beam baseado na posição real da nota
-        final stemLength = 3.5 * staffSpace;
-        
-        if (group.stemDirection == StemDirection.up) {
-          group.leftY = firstNoteY - stemLength;
-          group.rightY = lastNoteY - stemLength;
-        } else {
-          group.leftY = firstNoteY + stemLength;
-          group.rightY = lastNoteY + stemLength;
-        }
-        
-        // slope é calculado automaticamente pelo getter
-        print('         ✅ Usando Y ABSOLUTO! firstY=${firstNoteY.toStringAsFixed(2)}, lastY=${lastNoteY.toStringAsFixed(2)}');
-        print('         beam leftY=${group.leftY.toStringAsFixed(2)}, rightY=${group.rightY.toStringAsFixed(2)}');
-        return;
-      }
+    // ✅ SEMPRE usar Y absoluto (noteYPositions deve sempre estar disponível)
+    if (noteYPositions == null || noteYPositions.isEmpty) {
+      print('         ❌ ERRO CRÍTICO: noteYPositions não está disponível!');
+      throw ArgumentError('noteYPositions é obrigatório para cálculo de beams');
     }
 
-    // ✅ FALLBACK: Usar staff positions (sistema antigo)
-    if (noteStaffPositions == null || noteStaffPositions.isEmpty) {
-      // Posições padrão horizontais
-      final y = staffSpace * 2.0;
-      group.leftY = y;
-      group.rightY = y;
-      print('         ⚠️  FALLBACK: Usando posições padrão');
-      return;
+    final firstNoteY = noteYPositions[firstNote];
+    final lastNoteY = noteYPositions[lastNote];
+
+    if (firstNoteY == null || lastNoteY == null) {
+      print('         ❌ ERRO: Posição Y não encontrada para primeira ou última nota');
+      throw ArgumentError('Posições Y das notas não encontradas');
     }
 
-    // ✅ CORREÇÃO P3: Fallback para 0 (linha central), não 6
-    final firstPos = noteStaffPositions[firstNote] ?? 0;
-    final lastPos = noteStaffPositions[lastNote] ?? 0;
-
-    // Determinar se deve ser horizontal
-    final shouldBeHorizontal = _shouldBeHorizontal(
-      group.notes,
-      noteStaffPositions,
-    );
-
-    if (shouldBeHorizontal) {
-      // Beam horizontal
-      final y = _calculateHorizontalBeamY(
-        group.notes,
-        noteStaffPositions,
-        group.stemDirection,
-      );
-      group.leftY = y;
-      group.rightY = y;
-    } else {
-      // Beam inclinado
-      final slant = _calculateBeamSlant(
-        firstPos,
-        lastPos,
-        group.notes.length,
-        group.rightX - group.leftX,
-      );
-
-      // Calcular Y base para a primeira nota
-      final baseY = _calculateBeamYForNote(
-        firstPos,
-        group.stemDirection,
-      );
-
-      if (firstPos < lastPos) {
-        // Ascending
-        group.leftY = baseY;
-        group.rightY = baseY + slant * (group.stemDirection == StemDirection.up ? -1 : 1);
-      } else {
-        // Descending
-        group.leftY = baseY;
-        group.rightY = baseY - slant * (group.stemDirection == StemDirection.up ? -1 : 1);
-      }
-    }
-
-    // Ajustar para snap às linhas da pauta
-    group.leftY = _snapBeamToStaffLine(group.leftY, group.stemDirection);
-    group.rightY = _snapBeamToStaffLine(group.rightY, group.stemDirection);
-  }
-
-  /// Determina se beam deve ser horizontal
-  bool _shouldBeHorizontal(
-    List<Note> notes,
-    Map<Note, int> noteStaffPositions,
-  ) {
-    if (notes.length < 2) return true;
-
-    final firstPos = noteStaffPositions[notes.first] ?? 0;
-    final lastPos = noteStaffPositions[notes.last] ?? 0;
-
-    // Mesma altura: horizontal
-    if (firstPos == lastPos) return true;
-
-    // Verificar se é côncavo/convexo (notas internas mais extremas)
-    // Por simplicidade, vamos considerar apenas primeira e última
-    return false;
-  }
-
-  /// Calcula Y para beam horizontal
-  double _calculateHorizontalBeamY(
-    List<Note> notes,
-    Map<Note, int> noteStaffPositions,
-    StemDirection stemDirection,
-  ) {
-    // ✅ CORREÇÃO P3: Fallback para 0 (linha central), não 6
-    // Encontrar nota mais extrema
-    int extremePos = noteStaffPositions[notes.first] ?? 0;
-
-    for (final note in notes) {
-      final pos = noteStaffPositions[note] ?? 0;
-      if (stemDirection == StemDirection.up) {
-        extremePos = min(extremePos, pos); // Mais baixa
-      } else {
-        extremePos = max(extremePos, pos); // Mais alta
-      }
-    }
-
-    return _calculateBeamYForNote(extremePos, stemDirection);
-  }
-
-  /// Calcula posição Y do beam para uma nota específica
-  double _calculateBeamYForNote(int staffPosition, StemDirection stemDirection) {
-    // Comprimento padrão de haste: 3.5 staff spaces
+    // Calcular Y do beam baseado na posição real da nota
     final stemLength = 3.5 * staffSpace;
-    
-    // Converter staff position para Y
-    // Staff position 0 = linha inferior, valores pares = linhas, ímpares = espaços
-    final noteY = staffPosition * (staffSpace / 2);
 
-    if (stemDirection == StemDirection.up) {
-      // Haste para cima: beam fica acima da nota
-      return noteY - stemLength;
+    if (group.stemDirection == StemDirection.up) {
+      group.leftY = firstNoteY - stemLength;
+      group.rightY = lastNoteY - stemLength;
     } else {
-      // Haste para baixo: beam fica abaixo da nota
-      return noteY + stemLength;
+      group.leftY = firstNoteY + stemLength;
+      group.rightY = lastNoteY + stemLength;
     }
+
+    // slope é calculado automaticamente pelo getter
+    print('         ✅ Usando Y ABSOLUTO! firstY=${firstNoteY.toStringAsFixed(2)}, lastY=${lastNoteY.toStringAsFixed(2)}');
+    print('         beam leftY=${group.leftY.toStringAsFixed(2)}, rightY=${group.rightY.toStringAsFixed(2)}');
   }
 
-  /// Calcula inclinação (slant) do beam
-  /// ✅ CORREÇÃO P5: Cálculo correto da inclinação baseado em Elaine Gould
-  double _calculateBeamSlant(
-    int firstPos,
-    int lastPos,
-    int noteCount,
-    double spacing,
-  ) {
-    // staffPosition já está em half staff spaces (cada unidade = 0.5 SS)
-    // Converter diferença para pixels
-    final intervalPixels = (lastPos - firstPos).abs() * (staffSpace / 2);
-
-    double maxSlant;
-
-    // Regra de Gould: limitar inclinação baseado no número de notas
-    if (noteCount <= 3) {
-      maxSlant = 0.5 * staffSpace;
-    } else {
-      maxSlant = 1.25 * staffSpace;
-    }
-
-    // ✅ CORREÇÃO P5: Usar uma proporção maior do intervalo
-    // Proporção típica: 50-75% do intervalo real
-    // Aqui usamos 0.5 para um slant moderado
-    double slant = min(intervalPixels * 0.5, maxSlant);
-
-    // Notas muito próximas: ângulo mínimo
-    if (spacing < 3 * staffSpace) {
-      slant = min(slant, 0.5 * staffSpace);
-    }
-
-    return slant;
-  }
-
-  /// Ajusta Y do beam para snap em linhas da pauta
-  double _snapBeamToStaffLine(double rawY, StemDirection stemDirection) {
-    final lineHeight = staffSpace;
-    final nearestLine = (rawY / lineHeight).round();
-    final lineY = nearestLine * lineHeight;
-
-    // Pequena tolerância para centrar
-    if ((rawY - lineY).abs() < staffSpace * 0.125) {
-      return lineY; // Centrado
-    }
-
-    if (stemDirection == StemDirection.up) {
-      // Beam pode pendurar ou centrar
-      return lineY + (staffSpace * 0.5); // Pendurado
-    } else {
-      // Beam pode sentar ou centrar
-      return lineY - (staffSpace * 0.5); // Sentado
-    }
-  }
 
   /// Analisa beams secundários e cria BeamSegments
   void _analyzeSecondaryBeams(

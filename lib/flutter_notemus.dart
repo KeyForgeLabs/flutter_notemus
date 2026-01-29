@@ -24,6 +24,9 @@ export 'src/rendering/staff_renderer.dart';
 export 'src/rendering/renderers/base_glyph_renderer.dart';
 export 'src/layout/collision_detector.dart';
 
+// Grand Staff widget for piano notation
+export 'widgets/music_grand_staff.dart';
+
 /// Widget principal para renderização de partituras musicais
 /// VERSÃO CORRIGIDA E COMPLETA
 class MusicScore extends StatefulWidget {

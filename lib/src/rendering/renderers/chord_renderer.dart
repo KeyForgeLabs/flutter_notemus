@@ -364,13 +364,7 @@ class ChordRenderer extends BaseGlyphRenderer {
     return switch (direction) {
       StemDirection.up => true,
       StemDirection.down => false,
-      StemDirection.auto => {
-        // Fall back to position-based
-        final mostExtremePos = positions.reduce(
-          (a, b) => a.abs() > b.abs() ? a : b,
-        );
-        mostExtremePos > 0
-      },
+      StemDirection.auto => positions.reduce((a, b) => a.abs() > b.abs() ? a : b) > 0,
     };
   }
 

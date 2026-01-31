@@ -179,6 +179,14 @@ class MultiVoiceMeasure extends Measure {
   /// Map of voice number to Voice object
   final Map<int, Voice> voices = {};
 
+  /// Constructor
+  MultiVoiceMeasure({
+    super.autoBeaming,
+    super.beamingMode,
+    super.manualBeamGroups,
+    super.inheritedTimeSignature,
+  });
+
   /// Add a voice to this measure
   void addVoice(Voice voice) {
     voices[voice.number] = voice;

@@ -930,6 +930,8 @@ class LayoutEngine {
               dynamicElement: note.dynamicElement,
               techniques: note.techniques,
               voice: note.voice,
+              hideAccidental: note.hideAccidental,
+              showNatural: note.showNatural,
             );
 
             processedElements.add(beamedNote);

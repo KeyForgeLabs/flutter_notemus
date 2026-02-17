@@ -78,8 +78,8 @@ class TupletRenderer {
       );
     }
 
-    // Desenhar colchete se necessário
-    if (tuplet.showBracket && notePositions.length >= 2) {
+    // Desenhar colchete se necessário (use shouldShowBracket to respect bracketConfig)
+    if (tuplet.shouldShowBracket && notePositions.length >= 2) {
       _drawTupletBracket(
         canvas,
         notePositions,

@@ -53,6 +53,14 @@ class Note extends MusicalElement with BoundingBoxSupport {
   /// Número da voz para notação polifônica (1 = soprano, 2 = contralto, etc.)
   /// null = voz única (padrão)
   final int? voice;
+  
+  // Custom KeyForge properties
+  final bool isGrace;
+  final bool graceSlash;
+  final bool hideAccidental;
+  final bool showNatural;
+  final String? fingering;
+  final String? xmlId;
 
   Note({
     required this.pitch,
@@ -65,5 +73,11 @@ class Note extends MusicalElement with BoundingBoxSupport {
     this.dynamicElement,
     this.techniques = const [],
     this.voice,
+    this.isGrace = false,
+    this.graceSlash = false,
+    this.hideAccidental = false,
+    this.showNatural = false,
+    this.fingering,
+    this.xmlId,
   });
 }

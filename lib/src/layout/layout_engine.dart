@@ -18,8 +18,47 @@ class PositionedElement {
   final MusicalElement element;
   final Offset position;
   final int system;
+  final int measureIndex;
+  
+  /// Beat position within measure (0.0 = start, 4.0 = end of 4/4 measure)
+  final double beatPosition;
 
-  PositionedElement(this.element, this.position, {this.system = 0});
+  PositionedElement(this.element, this.position, {this.system = 0, this.measureIndex = 0, this.beatPosition = 0.0});
+}
+
+/// Information about a single measure's layout requirements
+class MeasureLayoutInfo {
+  /// The minimum width required for this measure (in pixels)
+  final double minWidth;
+  
+  /// Total beats in this measure (e.g., 4.0 for 4/4)
+  final double totalBeats;
+  
+  /// Width of system elements (clef, key sig, time sig) at start of measure
+  final double systemElementsWidth;
+  
+  /// Notes/rests with their beat positions within the measure
+  final List<MeasureNoteInfo> notes;
+  
+  MeasureLayoutInfo({
+    required this.minWidth,
+    required this.totalBeats,
+    required this.systemElementsWidth,
+    required this.notes,
+  });
+}
+
+/// Info about a note/rest position within a measure
+class MeasureNoteInfo {
+  final MusicalElement element;
+  final double beatPosition;  // Starting beat (0-indexed)
+  final double duration;      // Duration in beats
+  
+  MeasureNoteInfo({
+    required this.element,
+    required this.beatPosition,
+    required this.duration,
+  });
 }
 
 class LayoutCursor {
@@ -215,6 +254,7 @@ class LayoutEngine {
   static const double systemMargin = 2.5;
   static const double measureMinWidth = 5.0;
   static const double noteMinSpacing = 3.5; // Base para espaçamento entre notas
+  static const double minSpacePerBeat = 3.5; // Minimum staffSpace units per beat
   static const double measureEndPadding =
       3.0; // Espaço adequado ANTES da barline (agora corrigido!)
 
@@ -966,5 +1006,366 @@ class LayoutEngine {
     final double bottomMargin = staffSpace * 2.0;
 
     return topMargin + ((maxSystem + 1) * systemHeight) + bottomMargin;
+  }
+
+  // ============================================================
+  // GRAND STAFF SUPPORT: Measure width calculation & constrained layout
+  // ============================================================
+
+  /// Calculate layout info for each measure without actually positioning elements.
+  /// Used for grand staff alignment where we need to sync measure widths between staves.
+  List<MeasureLayoutInfo> calculateMeasureLayouts() {
+    final result = <MeasureLayoutInfo>[];
+    TimeSignature? currentTimeSignature;
+    
+    for (int i = 0; i < staff.measures.length; i++) {
+      final measure = staff.measures[i];
+      final isFirst = i == 0;
+      
+      // Find time signature for this measure
+      for (final element in measure.elements) {
+        if (element is TimeSignature) {
+          currentTimeSignature = element;
+          break;
+        }
+      }
+      final timeSignature = measure.timeSignature ?? currentTimeSignature ?? TimeSignature(numerator: 4, denominator: 4);
+      
+      // Calculate total beats in measure
+      final totalBeats = timeSignature.numerator.toDouble();
+      
+      // Separate system elements from musical elements
+      double systemWidth = 0;
+      final noteInfos = <MeasureNoteInfo>[];
+      double currentBeat = 0;
+      
+      for (final element in measure.elements) {
+        if (_isSystemElement(element)) {
+          if (isFirst || element is! Clef) { // Only count clef in first measure
+            systemWidth += _getElementWidthSimple(element);
+          }
+        } else if (element is Note || element is Rest || element is Chord) {
+          final duration = _getElementDurationInBeats(element, timeSignature);
+          noteInfos.add(MeasureNoteInfo(
+            element: element,
+            beatPosition: currentBeat,
+            duration: duration,
+          ));
+          currentBeat += duration;
+        } else if (element is Barline) {
+          // Don't add barlines to noteInfos, they're handled separately
+        }
+      }
+      
+      // Calculate minimum width for this measure
+      // Method: Take the MAXIMUM of:
+      //   1. Sum of element widths + spacing (the "packed" width)
+      //   2. Beat-proportional width (totalBeats * minSpacePerBeat)
+      // This ensures measures have enough room for beat-proportional positioning
+      
+      // Option 1: Packed width (sum of elements)
+      double packedWidth = systemWidth;
+      if (systemWidth > 0) {
+        packedWidth += staffSpace * 1.5; // Spacing after system elements
+      }
+      
+      // Add note widths + spacing
+      for (int j = 0; j < noteInfos.length; j++) {
+        packedWidth += _getElementWidthSimple(noteInfos[j].element);
+        if (j > 0) {
+          packedWidth += noteMinSpacing * staffSpace;
+        }
+      }
+      
+      // Option 2: Beat-proportional width
+      // Each beat needs minimum space for proper visual separation
+      final beatProportionalWidth = systemWidth + 
+          (systemWidth > 0 ? staffSpace * 1.5 : 0) +
+          (totalBeats * minSpacePerBeat * staffSpace);
+      
+      // Take the maximum of packed and beat-proportional
+      double minWidth = packedWidth > beatProportionalWidth ? packedWidth : beatProportionalWidth;
+      
+      // Ensure absolute minimum measure width
+      final measMinWidth = measureMinWidth * staffSpace;
+      if (minWidth < measMinWidth) {
+        minWidth = measMinWidth;
+      }
+      
+      // Add end padding for barline
+      minWidth += measureEndPadding * staffSpace;
+      minWidth += barlineSeparation * staffSpace;
+      
+      result.add(MeasureLayoutInfo(
+        minWidth: minWidth,
+        totalBeats: totalBeats,
+        systemElementsWidth: systemWidth + (systemWidth > 0 ? staffSpace * 1.5 : 0),
+        notes: noteInfos,
+      ));
+    }
+    
+    return result;
+  }
+  
+  /// Get element duration in beats
+  double _getElementDurationInBeats(MusicalElement element, TimeSignature timeSig) {
+    Duration? dur;
+    if (element is Note) {
+      dur = element.duration;
+    } else if (element is Rest) {
+      dur = element.duration;
+    } else if (element is Chord) {
+      dur = element.duration;
+    }
+    
+    if (dur == null) return 1.0;
+    
+    // Base duration in quarter notes
+    double quarterNotes;
+    switch (dur.type) {
+      case DurationType.whole:
+        quarterNotes = 4.0;
+        break;
+      case DurationType.half:
+        quarterNotes = 2.0;
+        break;
+      case DurationType.quarter:
+        quarterNotes = 1.0;
+        break;
+      case DurationType.eighth:
+        quarterNotes = 0.5;
+        break;
+      case DurationType.sixteenth:
+        quarterNotes = 0.25;
+        break;
+      case DurationType.thirtySecond:
+        quarterNotes = 0.125;
+        break;
+      case DurationType.sixtyFourth:
+        quarterNotes = 0.0625;
+        break;
+      default:
+        quarterNotes = 1.0;
+    }
+    
+    // Apply dots
+    double dotValue = quarterNotes;
+    for (int d = 0; d < dur.dots; d++) {
+      dotValue /= 2;
+      quarterNotes += dotValue;
+    }
+    
+    // Convert to beats based on time signature
+    // For 4/4, 1 quarter = 1 beat
+    // For 6/8, 1 eighth = 1 beat (but we treat it as compound, so 1 dotted quarter = 1 beat)
+    // For simplicity, assume beat = quarter note
+    return quarterNotes;
+  }
+  
+  /// Layout with constrained measure widths for grand staff alignment.
+  /// Notes are positioned proportionally by beat within each measure.
+  /// 
+  /// [measureWidths] - Synced measure widths (max of both staves)
+  /// [syncedSystemWidths] - Synced system elements widths per measure (max of both staves).
+  ///   When provided, ensures notes start at same X position across staves.
+  /// [isFinalSystem] - If false, will not add a final double-barline at the end.
+  ///   This is used in wrapped mode where only the last system should have a final barline.
+  List<PositionedElement> layoutWithConstraints(
+    List<double> measureWidths, {
+    List<double>? syncedSystemWidths,
+    bool isFinalSystem = true,
+  }) {
+    // Clear state
+    _noteXPositions.clear();
+    _noteStaffPositions.clear();
+    _noteYPositions.clear();
+    _advancedBeamGroups.clear();
+    
+    final List<PositionedElement> positionedElements = [];
+    
+    double currentX = systemMargin * staffSpace;
+    final double baselineY = staffSpace * 5.0;
+    
+    TimeSignature? currentTimeSignature;
+    Clef? currentClef;
+    
+    for (int measureIndex = 0; measureIndex < staff.measures.length; measureIndex++) {
+      final measure = staff.measures[measureIndex];
+      final isFirst = measureIndex == 0;
+      final measureWidth = measureIndex < measureWidths.length 
+          ? measureWidths[measureIndex] 
+          : measureMinWidth * staffSpace;
+      
+      // Track measure start X for beat-proportional positioning
+      final measureStartX = currentX;
+      
+      // Find time signature
+      for (final element in measure.elements) {
+        if (element is TimeSignature) {
+          currentTimeSignature = element;
+        }
+        if (element is Clef) {
+          currentClef = element;
+        }
+      }
+      final timeSignature = measure.timeSignature ?? currentTimeSignature ?? TimeSignature(numerator: 4, denominator: 4);
+      final totalBeats = timeSignature.numerator.toDouble();
+      
+      // Process beaming for notes in this measure
+      final processedElements = _processBeamsWithAnacrusis(
+        measure.elements,
+        timeSignature,
+        autoBeaming: measure.autoBeaming,
+        beamingMode: measure.beamingMode,
+        manualBeamGroups: measure.manualBeamGroups,
+      );
+      
+      // Layout system elements first (clef, key sig, time sig)
+      double systemElementsWidth = 0;
+      for (final element in processedElements) {
+        if (_isSystemElement(element)) {
+          if (element is Clef) {
+            currentClef = element;
+          }
+          
+          final elementY = baselineY;
+          positionedElements.add(PositionedElement(
+            element,
+            Offset(currentX, elementY),
+            measureIndex: measureIndex,
+          ));
+          final width = _getElementWidthSimple(element);
+          currentX += width;
+          systemElementsWidth += width;
+        }
+      }
+      
+      // Add spacing after system elements
+      if (systemElementsWidth > 0) {
+        currentX += staffSpace * 1.5;
+        systemElementsWidth += staffSpace * 1.5;
+      }
+      
+      // Use synced system width if provided (for grand staff alignment)
+      // This ensures both staves have notes starting at the same X position
+      final effectiveSystemWidth = (syncedSystemWidths != null && measureIndex < syncedSystemWidths.length)
+          ? syncedSystemWidths[measureIndex]
+          : systemElementsWidth;
+      
+      // Calculate available width for musical content (notes, rests)
+      // Leave room for barline at end
+      final barlineSpace = measureEndPadding * staffSpace + barlineSeparation * staffSpace;
+      final musicalContentWidth = measureWidth - effectiveSystemWidth - barlineSpace;
+      
+      // Collect musical elements and their beat positions
+      final musicalElements = <MusicalElement>[];
+      final beatPositions = <double>[];
+      double currentBeat = 0;
+      
+      for (final element in processedElements) {
+        if (!_isSystemElement(element) && element is! Barline) {
+          if (element is Note || element is Rest || element is Chord) {
+            musicalElements.add(element);
+            beatPositions.add(currentBeat);
+            currentBeat += _getElementDurationInBeats(element, timeSignature);
+          }
+        }
+      }
+      
+      // Position notes using PURE PROPORTIONAL positioning
+      // Notes are placed at their beat position within the measure
+      // Only adjustment: prevent overlap with previous note
+      // Use effective system width for note area start (for grand staff alignment)
+      final noteAreaStartX = measureStartX + effectiveSystemWidth;
+      
+      // Track previous note position to prevent overlap
+      double prevNoteRightEdge = noteAreaStartX;
+      final minNoteGap = staffSpace * 1.5; // Minimum gap between notes for legibility
+      
+      for (int i = 0; i < musicalElements.length; i++) {
+        final element = musicalElements[i];
+        final beat = beatPositions[i];
+        final noteWidth = _getElementWidthSimple(element);
+        
+        // Pure proportional position: beat / totalBeats * available width
+        double finalX = noteAreaStartX + (beat / totalBeats) * musicalContentWidth;
+        
+        // Only adjust if we would overlap with previous note
+        final minX = prevNoteRightEdge + minNoteGap;
+        if (finalX < minX) {
+          finalX = minX;
+        }
+        
+        // Update tracker for next note
+        prevNoteRightEdge = finalX + noteWidth;
+        
+        // Calculate Y position for notes
+        double elementY = baselineY;
+        if (element is Note && currentClef != null) {
+          final staffPosition = StaffPositionCalculator.calculate(element.pitch, currentClef!);
+          elementY = StaffPositionCalculator.toPixelY(staffPosition, staffSpace, baselineY);
+          
+          _noteXPositions[element] = finalX;
+          _noteStaffPositions[element] = staffPosition;
+          _noteYPositions[element] = elementY;
+        } else if (element is Chord && currentClef != null) {
+          // Handle chord notes individually
+          for (final note in element.notes) {
+            final staffPosition = StaffPositionCalculator.calculate(note.pitch, currentClef!);
+            final noteY = StaffPositionCalculator.toPixelY(staffPosition, staffSpace, baselineY);
+            
+            _noteXPositions[note] = finalX;
+            _noteStaffPositions[note] = staffPosition;
+            _noteYPositions[note] = noteY;
+            
+            positionedElements.add(PositionedElement(
+              note,
+              Offset(finalX, noteY),
+              measureIndex: measureIndex,
+              beatPosition: beat,
+            ));
+          }
+          continue; // Chord notes added individually
+        }
+        
+        positionedElements.add(PositionedElement(
+          element,
+          Offset(finalX, elementY),
+          measureIndex: measureIndex,
+          beatPosition: beat,
+        ));
+      }
+      
+      // Add barline at end of measure
+      // But first check if the measure already has a barline element
+      bool hasExplicitBarline = false;
+      for (final element in measure.elements) {
+        if (element is Barline) {
+          hasExplicitBarline = true;
+          break;
+        }
+      }
+      
+      currentX = measureStartX + measureWidth - barlineSeparation * staffSpace;
+      
+      if (!hasExplicitBarline) {
+        final isLast = measureIndex == staff.measures.length - 1;
+        // Only use final barline if this is the last measure AND this is the final system
+        final barlineType = (isLast && isFinalSystem) ? BarlineType.final_ : BarlineType.single;
+        positionedElements.add(PositionedElement(
+          Barline(type: barlineType),
+          Offset(currentX, baselineY),
+          measureIndex: measureIndex,
+        ));
+      }
+      
+      // Move to next measure
+      currentX = measureStartX + measureWidth;
+    }
+    
+    // Analyze beam groups
+    _analyzeBeamGroups(currentTimeSignature, positionedElements);
+    
+    return positionedElements;
   }
 }

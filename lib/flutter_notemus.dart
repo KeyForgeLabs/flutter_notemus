@@ -15,7 +15,9 @@ export 'core/core.dart';
 // Public API exports
 export 'src/theme/music_score_theme.dart';
 export 'src/layout/layout_engine.dart';
+export 'src/layout/simple_grid_layout.dart';
 export 'src/parsers/json_parser.dart';
+export 'src/parsers/musicxml_parser.dart';
 export 'src/smufl/glyph_categories.dart';
 export 'src/smufl/smufl_metadata_loader.dart';
 export 'src/rendering/staff_position_calculator.dart';

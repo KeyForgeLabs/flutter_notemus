@@ -5,6 +5,7 @@ import 'note.dart';
 import 'rest.dart';
 import 'time_signature.dart';
 import 'duration.dart';
+import 'repeat.dart';
 
 /// Representa um compasso, que contém elementos musicais.
 class Measure {
@@ -21,16 +22,36 @@ class Measure {
   /// Grupos manuais de beams - lista de listas de índices de notas a serem agrupadas
   /// Exemplo: [[0, 1, 2], [3, 4]] = agrupa notas 0,1,2 em um beam e 3,4 em outro
   List<List<int>> manualBeamGroups;
+  List<RepeatMark> navigationMarks = const [];
 
   /// TimeSignature herdado de compasso anterior (usado para validação preventiva)
   TimeSignature? inheritedTimeSignature;
+
+  // Custom KeyForge properties
+  bool repeatForward;
+  bool repeatBackward;
+  int repeatCount;
+  List<int> endings;
+  bool forceSystemBreak;
+  String? number;
 
   Measure({
     this.autoBeaming = true,
     this.beamingMode = BeamingMode.automatic,
     this.manualBeamGroups = const [],
     this.inheritedTimeSignature,
-  });
+    List<RepeatMark>? navigationMarks,
+    this.repeatForward = false,
+    this.repeatBackward = false,
+    this.repeatCount = 1,
+    this.endings = const [],
+    this.forceSystemBreak = false,
+    this.number,
+  }) {
+    if (navigationMarks != null) {
+      this.navigationMarks = navigationMarks;
+    }
+  }
 
   /// Adiciona um elemento musical ao compasso.
   /// 

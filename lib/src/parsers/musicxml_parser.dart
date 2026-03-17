@@ -98,11 +98,48 @@ class MusicXMLParser {
           break;
         case 'barline':
           final barline = _parseBarline(child);
-          if (barline != null) measure.add(barline);
+          if (barline != null) {
+            measure.add(barline);
+
+            // Also map it to the measure's repeat flags for legacy rendering support 
+            // in older wrapped_grid_staff versions that query the measure directly.
+            if (barline.type == BarlineType.repeatForward) {
+              measure.repeatForward = true;
+            } else if (barline.type == BarlineType.repeatBackward) {
+              measure.repeatBackward = true;
+            } else if (barline.type == BarlineType.repeatBoth) {
+              measure.repeatForward = true;
+              measure.repeatBackward = true;
+            }
+
+            // Extract loop counts (times) from repeat element
+            final repeatElement = child.findElements('repeat').firstOrNull;
+            if (repeatElement != null) {
+              final timesAttr = repeatElement.getAttribute('times');
+              if (timesAttr != null) {
+                measure.repeatCount = int.tryParse(timesAttr) ?? 1;
+              }
+            }
+
+            // Extract volta endings
+            final endingElement = child.findElements('ending').firstOrNull;
+            if (endingElement != null) {
+              final numberAttr = endingElement.getAttribute('number');
+              if (numberAttr != null) {
+                // e.g. "1,2" -> [1, 2]
+                measure.endings = numberAttr
+                    .split(',')
+                    .map((e) => int.tryParse(e.trim()))
+                    .whereType<int>()
+                    .toList();
+              }
+            }
+          }
           break;
       }
     }
 
+    _extractMarks(measureElement, measure);
     return measure;
   }
 
@@ -395,7 +432,19 @@ class MusicXMLParser {
     // Parse de texto
     final wordsElement = directionTypeElement.findElements('words').firstOrNull;
     if (wordsElement != null) {
-      return MusicText(text: wordsElement.innerText, type: TextType.expression);
+      final text = wordsElement.innerText;
+      final textLower = text.trim().toLowerCase();
+      // Ignore repeat/navigation texts so they don't render twice 
+      // (they are parsed into RepeatMarks in _extractMarks)
+      if (textLower.contains('d.s. al coda') || 
+          textLower.contains('d.s. al fine') || 
+          textLower.contains('d.c. al coda') || 
+          textLower.contains('d.c. al fine') || 
+          textLower.contains('to coda') || 
+          textLower.contains('fine')) {
+        return null;
+      }
+      return MusicText(text: text, type: TextType.expression);
     }
 
     // Parse de metrônomo
@@ -495,8 +544,39 @@ class MusicXMLParser {
 
   /// Parse de barra de compasso
   static Barline? _parseBarline(XmlElement barlineElement) {
-    // Implementação básica
-    return Barline();
+    BarlineType type = BarlineType.single;
+    
+    // Check if it's a repeat
+    final repeatElement = barlineElement.findElements('repeat').firstOrNull;
+    if (repeatElement != null) {
+      final direction = repeatElement.getAttribute('direction');
+      if (direction == 'forward') {
+        type = BarlineType.repeatForward;
+      } else if (direction == 'backward') {
+        type = BarlineType.repeatBackward;
+      }
+    } else {
+      // Check for specific barline styles (like double, final, light-heavy)
+      final styleElement = barlineElement.findElements('bar-style').firstOrNull;
+      if (styleElement != null) {
+        final style = styleElement.innerText;
+        if (style == 'light-heavy') {
+          type = BarlineType.final_;
+        } else if (style == 'light-light') {
+          type = BarlineType.double;
+        } else if (style == 'dashed') {
+          type = BarlineType.dashed;
+        } else if (style == 'heavy') {
+          type = BarlineType.heavy;
+        } else if (style == 'none') {
+          type = BarlineType.none;
+        }
+      } else {
+        // If it's just a default barline, keep type single
+      }
+    }
+
+    return Barline(type: type);
   }
 
   /// Converte objetos musicais para MusicXML
@@ -1009,4 +1089,57 @@ class MusicXMLParser {
 
     return info;
   }
+
+  static void _extractMarks(XmlElement measureElement, Measure measure) {
+    for (final direction in measureElement.findAllElements('direction')) {
+      final directionType = direction.getElement('direction-type');
+      if (directionType == null) continue;
+
+      for (final wordsElement in directionType.findAllElements('words')) {
+        final text = wordsElement.text.trim().toLowerCase();
+        if (text.contains('d.s. al coda')) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.dalSegnoAlCoda)];
+        } else if (text.contains('d.s. al fine')) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.dalSegnoAlFine)];
+        } else if (text.contains('d.c. al fine')) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.daCapoAlFine)];
+        } else if (text.contains('to coda')) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.toCoda)];
+        } else if (text.contains('fine')) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.fine)];
+        }
+      }
+
+      if (directionType.getElement('segno') != null) {
+         measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.segno)];
+      }
+      if (directionType.getElement('coda') != null) {
+         measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.coda)];
+      }
+    }
+
+    for (final sound in measureElement.findAllElements('sound')) {
+      if (sound.getAttribute('dacapo') == 'yes') {
+        if (!measure.navigationMarks.any((m) => m.type == RepeatType.daCapo || m.type == RepeatType.daCapoAlFine)) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.daCapo)];
+        }
+      }
+      if (sound.getAttribute('dalsegno') != null) {
+        if (!measure.navigationMarks.any((m) => m.type == RepeatType.dalSegno || m.type == RepeatType.dalSegnoAlCoda || m.type == RepeatType.dalSegnoAlFine)) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.dalSegno)];
+        }
+      }
+      if (sound.getAttribute('tocoda') != null) {
+        if (!measure.navigationMarks.any((m) => m.type == RepeatType.toCoda)) {
+          measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.toCoda)];
+        }
+      }
+      if (sound.getAttribute('fine') != null) {
+        if (!measure.navigationMarks.any((m) => m.type == RepeatType.fine)) {
+           measure.navigationMarks = [...measure.navigationMarks, RepeatMark(type: RepeatType.fine)];
+        }
+      }
+    }
+  }
+
 }

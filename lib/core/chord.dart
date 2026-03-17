@@ -21,6 +21,9 @@ class Chord extends MusicalElement with BoundingBoxSupport {
   /// Número da voz para notação polifônica (1 = soprano, 2 = contralto, etc.)
   /// null = voz única (padrão)
   final int? voice;
+  
+  // Custom KeyForge properties
+  final bool isGrace;
 
   Chord({
     required this.notes,
@@ -32,6 +35,7 @@ class Chord extends MusicalElement with BoundingBoxSupport {
     this.ornaments = const [],
     this.dynamic,
     this.voice,
+    this.isGrace = false,
   });
 
   Note get highestNote {
